@@ -1,0 +1,61 @@
+# EarlyWatch AnnotationCheck -> Gatekeeper
+# Requires the `earlywatch.io/confirm-delete=yes` annotation to delete
+# the "production" Namespace.
+---
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: ewannotationcheck
+spec:
+  crd:
+    spec:
+      names:
+        kind: EWAnnotationCheck
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            annotationKey:
+              type: string
+            annotationValue:
+              type: string
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package ewannotationcheck
+
+        key := input.parameters.annotationKey
+        want := input.parameters.annotationValue
+
+        # Annotation present on the object being acted on.
+        # On DELETE, oldObject carries the existing annotations.
+        got := input.review.oldObject.metadata.annotations[key]
+
+        violation[{"msg": msg}] {
+          input.review.operation == "DELETE"
+          not got
+          msg := sprintf("missing required annotation %q", [key])
+        }
+
+        violation[{"msg": msg}] {
+          input.review.operation == "DELETE"
+          got
+          want != ""
+          got != want
+          msg := sprintf("annotation %q must equal %q (got %q)", [key, want, got])
+        }
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: EWAnnotationCheck
+metadata:
+  name: require-confirm-delete-annotation
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Namespace"]
+    # Gatekeeper match supports name globbing on the resource itself for cluster-scoped resources.
+    # Use a constraint per protected name, or omit to apply cluster-wide.
+  parameters:
+    annotationKey: "earlywatch.io/confirm-delete"
+    annotationValue: "yes"

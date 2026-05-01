@@ -1,0 +1,52 @@
+# Single-entrypoint kustomization for the EarlyWatch-on-Gatekeeper stack.
+#
+# Apply order is important — Gatekeeper requires:
+#   1. ConstraintTemplates reconciled before Constraints
+#   2. Provider CR created before any constraint that references it
+#   3. Config sync set up before referential constraints fire
+#
+# Kustomize emits everything in this `resources` order, which respects the
+# dependencies above.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  # 1. Inventory sync first.
+  - policy/00-config-sync.yaml
+
+  # 2. ConstraintTemplates + Provider.
+  - policy/01-existing-resources-template.yaml
+  - policy/02-name-reference-check-template.yaml
+  - policy/03-annotation-check-template.yaml
+  - policy/04-approval-check-template.yaml
+  - policy/05-check-lock-template.yaml
+  - policy/06-expression-check-template.yaml
+  - policy/06-expression-check-real-cel-template.yaml
+  - policy/07-manual-touch-check-template.yaml
+  - policy/07-manual-touch-check-cel-template.yaml
+  - policy/08-service-pod-selector-check-template.yaml
+  - policy/09-data-key-safety-check-template.yaml
+
+  # 3. Provider deployment + hardening.
+  - provider/manifests/deployment.yaml
+  - provider/manifests/provider.yaml
+  - provider/manifests/hardening.yaml
+
+  # 4. Manual-touch producer (optional, replace with upstream monitor for full
+  #    audit-log fidelity).
+  - touch-monitor/manifests/cronjob.yaml
+
+  # 5. Constraints last so the templates and provider are guaranteed to exist.
+  - policy/01-existing-resources-constraint.yaml
+  - policy/01-existing-resources-constraint-static.yaml
+  - policy/02-name-reference-check-constraint.yaml
+  - policy/03-annotation-check-constraint.yaml
+  - policy/04-approval-check-constraint.yaml
+  - policy/05-check-lock-constraint.yaml
+  - policy/06-expression-check-constraint.yaml
+  - policy/06-expression-check-constraint-regex.yaml
+  - policy/06-expression-check-real-cel-constraint.yaml
+  - policy/07-manual-touch-check-constraint.yaml
+  - policy/07-manual-touch-check-cel-constraint.yaml
+  - policy/08-service-pod-selector-check-constraint.yaml
+  - policy/09-data-key-safety-check-constraint.yaml

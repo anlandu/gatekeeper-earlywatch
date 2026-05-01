@@ -1,0 +1,16 @@
+apiVersion: admission.k8s.io/v1
+kind: AdmissionReview
+request:
+  operation: DELETE
+  kind:
+    group: ""
+    version: v1
+    kind: Namespace
+  name: production
+  oldObject:
+    apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: production
+      annotations:
+        earlywatch.io/confirm-delete: "yes"

@@ -1,0 +1,12 @@
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: EWManualTouchCheckCEL
+metadata:
+  name: block-recent-manual-touch-cel
+spec:
+  match:
+    kinds:
+      - apiGroups: ["apps"]
+        kinds: ["Deployment"]
+  parameters:
+    annotation: "earlywatch.io/last-manual-touch"
+    windowSeconds: 7200

@@ -1,0 +1,17 @@
+# Phased rollout: same constraint as 05-check-lock-constraint.yaml but in
+# dryrun mode. Use this when introducing CheckLock to an existing cluster:
+# violations are reported but admissions are NOT denied. Once the violation
+# count is zero, switch enforcementAction back to deny.
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: EWCheckLock
+metadata:
+  name: deployment-must-not-be-locked-dryrun
+spec:
+  enforcementAction: dryrun
+  match:
+    kinds:
+      - apiGroups: ["apps"]
+        kinds: ["Deployment"]
+  parameters:
+    lockOnMutate: true
+    annotation: "earlywatch.io/lock"

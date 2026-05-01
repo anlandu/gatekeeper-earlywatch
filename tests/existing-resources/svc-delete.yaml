@@ -1,0 +1,19 @@
+apiVersion: admission.k8s.io/v1
+kind: AdmissionReview
+request:
+  operation: DELETE
+  kind:
+    group: ""
+    version: v1
+    kind: Service
+  name: web
+  namespace: default
+  oldObject:
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: web
+      namespace: default
+    spec:
+      selector:
+        app: web

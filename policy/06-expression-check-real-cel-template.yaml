@@ -1,0 +1,38 @@
+# EarlyWatch ExpressionCheck — true CEL pass-through.
+#
+# Gatekeeper CEL templates compile their expression at template-creation time;
+# CEL has no eval(string), so the expression CANNOT be a constraint parameter.
+# The supported parity model is: one ConstraintTemplate per CEL expression.
+#
+# This file is a worked example that mirrors the EarlyWatch sample
+#   `expression: "namespace == 'production'"` (deny when true).
+# Operators duplicate the template, change the metadata.name + kind, and
+# replace the `expression` body to author additional rules.
+#
+# Variables exposed to CEL:
+#   request.{operation,namespace,name,kind,resource,subResource,uid,…}
+#   object, oldObject — same shape as the admission review payload.
+#
+# IMPORTANT: Gatekeeper templates evaluate to "deny when expression is FALSE"
+# (the validation expression states the *allowed* condition). To match
+# EarlyWatch's "deny when true" semantics, we negate.
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: ewexpressioncheckcelproddelete
+spec:
+  crd:
+    spec:
+      names:
+        kind: EWExpressionCheckCELProdDelete
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      code:
+        - engine: K8sNativeValidation
+          source:
+            validations:
+              # EarlyWatch:  expression: "namespace == 'production'"
+              # Gatekeeper (negated, allowed-when-true):
+              - expression: "!(request.namespace == 'production' && request.operation == 'DELETE')"
+                messageExpression: |
+                  request.operation + ' in namespace ' + request.namespace + ' is not permitted'

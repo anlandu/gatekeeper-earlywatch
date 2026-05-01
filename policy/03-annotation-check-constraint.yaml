@@ -1,0 +1,16 @@
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: EWAnnotationCheck
+metadata:
+  name: require-confirm-delete-annotation
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Namespace"]
+    # Gatekeeper match supports name globbing on the resource itself for cluster-scoped resources.
+    # Use a constraint per protected name, or omit to apply cluster-wide.
+  parameters:
+    operations: ["DELETE"]
+    annotationKey: "earlywatch.io/confirm-delete"
+    annotationValue: "yes"
+    requireValue: true

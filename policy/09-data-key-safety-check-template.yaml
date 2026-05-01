@@ -1,0 +1,131 @@
+# EarlyWatch DataKeySafetyCheck -> Gatekeeper referential constraint
+#
+# Denies UPDATEs to ConfigMaps/Secrets that drop a data key while another
+# resource still references that exact (name, key) pair via configMapKeyRef
+# / secretKeyRef-style fields.
+#
+# Parameters mirror the EarlyWatch CV spec:
+#   sameNamespace: bool
+#   resources:
+#     - apiGroup: ""
+#       version:  v1
+#       kind:     Pod
+#       keyReferenceFields:
+#         - refPath:      spec.containers.env.valueFrom.configMapKeyRef
+#           nameSubField: name        # default "name"
+#           keySubField:  key         # default "key"
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: ewdatakeysafetycheck
+  annotations:
+    # Inventory dependency varies by `resources[]`. Add each referrer kind to
+    # 00-config-sync.yaml. Common referrer:
+    metadata.gatekeeper.sh/requires-sync-data: |
+      "[[{\"groups\":[\"\"],\"versions\":[\"v1\"],\"kinds\":[\"Pod\"]}]]"
+spec:
+  crd:
+    spec:
+      names:
+        kind: EWDataKeySafetyCheck
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            sameNamespace: {type: boolean}
+            resources:
+              type: array
+              items:
+                type: object
+                properties:
+                  apiGroup: {type: string}
+                  version:  {type: string}
+                  kind:     {type: string}
+                  keyReferenceFields:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        refPath:      {type: string}
+                        nameSubField: {type: string}
+                        keySubField:  {type: string}
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      code:
+        - engine: Rego
+          source:
+            rego: |
+              package ewdatakeysafetycheck
+
+              import future.keywords.in
+
+              params      := input.parameters
+              target_name := input.review.object.metadata.name
+              target_ns   := input.review.object.metadata.namespace
+
+              old_keys := { k | input.review.oldObject.data[k] }
+              new_keys := { k | input.review.object.data[k] }
+              removed_keys := old_keys - new_keys
+
+              gv_for(r) := r.version              { r.apiGroup == "" }
+              gv_for(r) := sprintf("%s/%s",
+                           [r.apiGroup, r.version]) { r.apiGroup != "" }
+
+              is_string_part(p) { is_string(p) }
+
+              # All ref-objects at refPath inside `obj` (path may cross arrays).
+              refs_at(obj, refPath) := vals {
+                parts := split(refPath, ".")
+                vals := { v |
+                  walk(obj, [path, v])
+                  string_path := [p | p := path[_]; is_string_part(p)]
+                  string_path == parts
+                }
+              }
+
+              # Iterate referrers and collect (kind, name, refKey) triples that still
+              # cite a removed key on this CM/Secret.
+              offender[{"kind": k.kind, "name": ref_name, "refKey": refKey}] {
+                input.review.operation == "UPDATE"
+                some i
+                r := params.resources[i]
+                some referrer_name
+                o := referrer_objects(r)[referrer_name]
+                some j
+                field := r.keyReferenceFields[j]
+                ref := refs_at(o, field.refPath)[_]
+                name_field := default_name(field)
+                key_field  := default_key(field)
+                ref[name_field] == target_name
+                refKey := ref[key_field]
+                refKey in removed_keys
+                k := {"kind": r.kind}
+                ref_name := referrer_name
+              }
+
+              default_name(field) := "name" { not field.nameSubField }
+              default_name(field) := field.nameSubField { field.nameSubField }
+              default_key(field)  := "key"  { not field.keySubField }
+              default_key(field)  := field.keySubField  { field.keySubField }
+
+              referrer_objects(r) := objs {
+                # Default sameNamespace -> true to match upstream EarlyWatch
+                # (DataKeySafetyCheck.SameNamespace +kubebuilder:default=true).
+                object.get(params, "sameNamespace", true) == true
+                objs := { name: o |
+                  o := data.inventory.namespace[target_ns][gv_for(r)][r.kind][name]
+                }
+              }
+              referrer_objects(r) := objs {
+                object.get(params, "sameNamespace", true) == false
+                objs := { name: o |
+                  some ns
+                  o := data.inventory.namespace[ns][gv_for(r)][r.kind][name]
+                }
+              }
+
+              violation[{"msg": msg}] {
+                off := offender[_]
+                msg := sprintf("%s %q cannot drop key %q: %s %q still references it",
+                  [input.review.kind.kind, target_name, off.refKey, off.kind, off.name])
+              }

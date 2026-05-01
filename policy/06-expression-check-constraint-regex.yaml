@@ -1,0 +1,15 @@
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: EWExpressionCheck
+metadata:
+  name: block-prod-and-critical
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["ConfigMap"]
+  parameters:
+    match:
+      - operationIn: ["DELETE"]
+        namespaceRegex: "^prod.*"
+      - operationIn: ["DELETE"]
+        nameRegex: "^critical-.*"

@@ -1,0 +1,10 @@
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: EWServicePodSelectorCheck
+metadata:
+  name: prevent-selector-drop-to-zero-pods
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Service"]
+    excludedNamespaces: ["kube-system", "gatekeeper-system"]

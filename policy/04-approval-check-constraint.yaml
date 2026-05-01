@@ -1,0 +1,18 @@
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: EWApprovalCheck
+metadata:
+  name: require-approval-signature
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["ConfigMap"]
+    namespaces: ["default"]
+  parameters:
+    annotationKey: "earlywatch.io/approved"
+    changeAnnotationKey: "earlywatch.io/change-approved"
+    publicKey: |
+      -----BEGIN PUBLIC KEY-----
+      REPLACE_WITH_YOUR_RSA_PUBLIC_KEY
+      -----END PUBLIC KEY-----
+    provider: "approval-verifier"

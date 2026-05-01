@@ -1,0 +1,69 @@
+# EarlyWatch ManualTouchCheck -> Gatekeeper referential constraint
+#
+# Reads the SAME ManualTouchEvent CR that EarlyWatch's audit-monitor records.
+# Requires that EarlyWatch (or any controller producing those CRs) is running
+# AND that we sync ManualTouchEvent into data.inventory.
+#
+# Parameters mirror EarlyWatch's CV spec:
+#   windowDuration  Go duration string ("2h"); default "1h"
+#   eventNamespace  CR namespace; default "early-watch-system"
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: ewmanualtouchcheck
+  annotations:
+    metadata.gatekeeper.sh/requires-sync-data: |
+      "[[{\"groups\":[\"earlywatch.io\"], \"versions\":[\"v1alpha1\"], \"kinds\":[\"ManualTouchEvent\"]}]]"
+spec:
+  crd:
+    spec:
+      names:
+        kind: EWManualTouchCheck
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            windowDuration: {type: string}
+            eventNamespace: {type: string}
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      code:
+        - engine: Rego
+          source:
+            rego: |
+              package ewmanualtouchcheck
+
+              params := input.parameters
+
+              window_dur := d {
+                d := params.windowDuration
+                d != ""
+              } else := "1h"
+
+              event_ns := n {
+                n := params.eventNamespace
+                n != ""
+              } else := "early-watch-system"
+
+              window_ns := time.parse_duration_ns(window_dur)
+              now_ns    := time.now_ns()
+
+              target_kind := input.review.kind.kind
+              target_name := input.review.oldObject.metadata.name
+              target_ns   := input.review.oldObject.metadata.namespace
+
+              # ManualTouchEvent shape (per EarlyWatch v1alpha1):
+              #   spec.target.{kind, namespace, name}
+              #   spec.timestamp  (RFC3339)
+              violation[{"msg": msg}] {
+                input.review.operation == "UPDATE"
+                some name
+                ev := data.inventory.namespace[event_ns]["earlywatch.io/v1alpha1"]["ManualTouchEvent"][name]
+                ev.spec.target.kind      == target_kind
+                ev.spec.target.namespace == target_ns
+                ev.spec.target.name      == target_name
+                touch_ns := time.parse_rfc3339_ns(ev.spec.timestamp)
+                now_ns - touch_ns < window_ns
+                msg := sprintf("%s %q was manually touched within %s; update denied",
+                  [target_kind, target_name, window_dur])
+              }

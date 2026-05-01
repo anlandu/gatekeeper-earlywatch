@@ -1,0 +1,97 @@
+# EarlyWatch AnnotationCheck -> Gatekeeper
+#
+# Mirrors EarlyWatch's AnnotationCheck:
+#   annotationKey   (required)
+#   annotationValue (*string in EarlyWatch — nil/absent means "any value accepted")
+#
+# Because OpenAPI/Rego conflate "absent" and "empty string", this template uses
+# `requireValue` as an explicit toggle. Behavior:
+#   - requireValue=false  -> any value (including "") accepted as long as key is present
+#   - requireValue=true   -> the annotation MUST equal `annotationValue` exactly
+#                            (including the empty string)
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: ewannotationcheck
+spec:
+  crd:
+    spec:
+      names:
+        kind: EWAnnotationCheck
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            annotationKey:   {type: string}
+            annotationValue: {type: string}
+            requireValue:    {type: boolean}
+            operations:
+              type: array
+              items: {type: string}
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      code:
+        - engine: Rego
+          source:
+            rego: |
+              package ewannotationcheck
+
+              import future.keywords.in
+
+              key  := input.parameters.annotationKey
+              want := input.parameters.annotationValue
+              ops  := input.parameters.operations
+              require_value := input.parameters.requireValue
+
+              # On DELETE the object only exists in oldObject; on CREATE only in object;
+              # on UPDATE both exist. Read whichever is populated.
+              candidate := input.review.object { input.review.object != null }
+              candidate := input.review.oldObject {
+                input.review.object == null
+                input.review.oldObject != null
+              }
+
+              annotations := object.get(candidate, ["metadata", "annotations"], {})
+              has_key { _ := annotations[key] }
+
+              violation[{"msg": msg}] {
+                input.review.operation in ops
+                not has_key
+                msg := sprintf("missing required annotation %q", [key])
+              }
+
+              violation[{"msg": msg}] {
+                input.review.operation in ops
+                has_key
+                require_value == true
+                annotations[key] != want
+                msg := sprintf("annotation %q must equal %q (got %q)", [key, want, annotations[key]])
+              }
+        - engine: K8sNativeValidation
+          source:
+            validations:
+              - expression: |
+                  !(variables.params.operations.exists(o, o == request.operation)) ||
+                  (
+                    (
+                      (object != null && has(object.metadata) && has(object.metadata.annotations) &&
+                       variables.params.annotationKey in object.metadata.annotations) ||
+                      (object == null && oldObject != null && has(oldObject.metadata) &&
+                       has(oldObject.metadata.annotations) &&
+                       variables.params.annotationKey in oldObject.metadata.annotations)
+                    ) &&
+                    (
+                      !variables.params.requireValue ||
+                      (
+                        (object != null && object.metadata.annotations[variables.params.annotationKey]
+                          == variables.params.annotationValue) ||
+                        (object == null && oldObject.metadata.annotations[variables.params.annotationKey]
+                          == variables.params.annotationValue)
+                      )
+                    )
+                  )
+                messageExpression: |
+                  'annotation ' + variables.params.annotationKey +
+                  (variables.params.requireValue
+                    ? '=' + variables.params.annotationValue + ' is required'
+                    : ' is required')

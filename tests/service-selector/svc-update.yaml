@@ -1,0 +1,28 @@
+apiVersion: admission.k8s.io/v1
+kind: AdmissionReview
+request:
+  operation: UPDATE
+  kind:
+    group: ""
+    version: v1
+    kind: Service
+  name: web
+  namespace: default
+  object:
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: web
+      namespace: default
+    spec:
+      selector:
+        app: web-renamed
+  oldObject:
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: web
+      namespace: default
+    spec:
+      selector:
+        app: web

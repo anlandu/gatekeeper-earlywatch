@@ -1,0 +1,215 @@
+kind: Suite
+apiVersion: test.gatekeeper.sh/v1alpha1
+metadata:
+  name: earlywatch-gatekeeper
+tests:
+  - name: existing-resources
+    template: ../policy/01-existing-resources-template.yaml
+    constraint: ../policy/01-existing-resources-constraint.yaml
+    cases:
+      - name: deny-delete-when-pod-matches
+        object: existing-resources/svc-delete.yaml
+        inventory:
+          - existing-resources/pod-matching.yaml
+        assertions:
+          - violations: yes
+      - name: allow-delete-when-no-pod-matches
+        object: existing-resources/svc-delete.yaml
+        inventory:
+          - existing-resources/pod-nonmatching.yaml
+        assertions:
+          - violations: no
+
+  - name: name-reference-check
+    template: ../policy/02-name-reference-check-template.yaml
+    constraint: ../policy/02-name-reference-check-constraint.yaml
+    cases:
+      - name: deny-delete-when-deployment-references
+        object: name-reference/cm-delete.yaml
+        inventory:
+          - name-reference/dep-references.yaml
+        assertions:
+          - violations: yes
+      - name: allow-delete-when-no-reference
+        object: name-reference/cm-delete.yaml
+        inventory:
+          - name-reference/dep-no-reference.yaml
+        assertions:
+          - violations: no
+
+  - name: annotation-check
+    template: ../policy/03-annotation-check-template.yaml
+    constraint: ../policy/03-annotation-check-constraint.yaml
+    cases:
+      - name: deny-when-annotation-missing
+        object: annotation/ns-delete-no-anno.yaml
+        assertions:
+          - violations: yes
+      - name: deny-when-annotation-wrong
+        object: annotation/ns-delete-wrong-anno.yaml
+        assertions:
+          - violations: yes
+      - name: allow-when-annotation-correct
+        object: annotation/ns-delete-correct-anno.yaml
+        assertions:
+          - violations: no
+
+  - name: checklock
+    template: ../policy/05-check-lock-template.yaml
+    constraint: ../policy/05-check-lock-constraint.yaml
+    cases:
+      - name: deny-delete-when-locked
+        object: checklock/dep-delete-locked.yaml
+        assertions:
+          - violations: yes
+      - name: deny-delete-when-lock-value-is-not-true
+        object: checklock/dep-delete-locked-other-value.yaml
+        assertions:
+          - violations: yes
+      - name: deny-update-when-locked
+        object: checklock/dep-update-locked.yaml
+        assertions:
+          - violations: yes
+      - name: allow-unlock-only-update
+        object: checklock/dep-update-unlock-only.yaml
+        assertions:
+          - violations: no
+      - name: deny-unlock-plus-other-change
+        object: checklock/dep-update-unlock-and-change.yaml
+        assertions:
+          - violations: yes
+      - name: allow-delete-when-unlocked
+        object: checklock/dep-delete-unlocked.yaml
+        assertions:
+          - violations: no
+
+  - name: expression-check
+    template: ../policy/06-expression-check-template.yaml
+    constraint: ../policy/06-expression-check-constraint.yaml
+    cases:
+      - name: deny-delete-in-production
+        object: expression/cm-delete-prod.yaml
+        assertions:
+          - violations: yes
+      - name: allow-delete-elsewhere
+        object: expression/cm-delete-staging.yaml
+        assertions:
+          - violations: no
+
+  - name: service-pod-selector-check
+    template: ../policy/08-service-pod-selector-check-template.yaml
+    constraint: ../policy/08-service-pod-selector-check-constraint.yaml
+    cases:
+      - name: allow-create-with-zero-matching-pods
+        object: service-selector/svc-create.yaml
+        inventory:
+          - service-selector/pod-nonmatching.yaml
+        assertions:
+          - violations: no
+      - name: allow-create-with-matching-pod
+        object: service-selector/svc-create.yaml
+        inventory:
+          - service-selector/pod-matching.yaml
+        assertions:
+          - violations: no
+      - name: deny-update-when-old-had-pod-new-has-zero
+        object: service-selector/svc-update.yaml
+        inventory:
+          - service-selector/pod-matching.yaml
+        assertions:
+          - violations: yes
+      - name: allow-update-when-old-selector-had-zero-pods
+        object: service-selector/svc-update.yaml
+        inventory:
+          - service-selector/pod-nonmatching.yaml
+        assertions:
+          - violations: no
+      - name: allow-update-when-new-selector-has-pod
+        object: service-selector/svc-update.yaml
+        inventory:
+          - service-selector/pod-matching.yaml
+          - service-selector/pod-new-matching.yaml
+        assertions:
+          - violations: no
+      - name: allow-headless-service-update
+        object: service-selector/svc-update-headless.yaml
+        inventory:
+          - service-selector/pod-matching.yaml
+        assertions:
+          - violations: no
+
+  - name: expression-check-regex
+    template: ../policy/06-expression-check-template.yaml
+    constraint: ../policy/06-expression-check-constraint-regex.yaml
+    cases:
+      - name: deny-by-namespace-regex
+        object: expression/cm-delete-prod.yaml
+        assertions:
+          - violations: yes
+      - name: deny-by-name-regex
+        object: expression/cm-delete-staging-critical.yaml
+        assertions:
+          - violations: yes
+      - name: allow-when-no-predicate-matches
+        object: expression/cm-delete-staging.yaml
+        assertions:
+          - violations: no
+
+  - name: data-key-safety-check
+    template: ../policy/09-data-key-safety-check-template.yaml
+    constraint: ../policy/09-data-key-safety-check-constraint.yaml
+    cases:
+      - name: deny-when-key-still-referenced
+        object: datakey/cm-update-drop-key.yaml
+        inventory:
+          - datakey/pod-references-removed-key.yaml
+        assertions:
+          - violations: yes
+      - name: allow-when-only-other-keys-referenced
+        object: datakey/cm-update-drop-key.yaml
+        inventory:
+          - datakey/pod-references-kept-key.yaml
+        assertions:
+          - violations: no
+
+  - name: existing-resources-static-selector
+    template: ../policy/01-existing-resources-template.yaml
+    constraint: ../policy/01-existing-resources-constraint-static.yaml
+    cases:
+      - name: deny-when-In-matches
+        object: existing-resources-static/svc-delete.yaml
+        inventory:
+          - existing-resources-static/pod-prod.yaml
+        assertions:
+          - violations: yes
+      - name: allow-when-In-does-not-match
+        object: existing-resources-static/svc-delete.yaml
+        inventory:
+          - existing-resources-static/pod-dev.yaml
+        assertions:
+          - violations: no
+
+  # Real-CEL pass-through ExpressionCheck (one template per CEL expression).
+  - name: expression-check-real-cel
+    template: ../policy/06-expression-check-real-cel-template.yaml
+    constraint: ../policy/06-expression-check-real-cel-constraint.yaml
+    cases:
+      - name: deny-delete-in-production
+        object: expression/cm-delete-prod.yaml
+        assertions:
+          - violations: yes
+      - name: allow-delete-elsewhere
+        object: expression/cm-delete-staging.yaml
+        assertions:
+          - violations: no
+
+  # Malformed-input fixtures: defensively validate that templates don't crash
+  # on missing oldObject, empty annotations, or missing labels.
+  - name: malformed-inputs
+    template: ../policy/03-annotation-check-template.yaml
+    constraint: ../policy/03-annotation-check-constraint.yaml
+    cases:
+      - name: missing-annotations-map
+        object: malformed/ns-delete-no-annotations-map.yaml
+        assertions:
+          - violations: yes

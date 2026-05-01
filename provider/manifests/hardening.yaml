@@ -1,0 +1,37 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: approval-verifier
+  namespace: gatekeeper-system
+spec:
+  podSelector:
+    matchLabels: {app: approval-verifier}
+  policyTypes: ["Ingress", "Egress"]
+  ingress:
+    # Only Gatekeeper webhook + audit pods need to reach us.
+    - from:
+        - podSelector:
+            matchLabels:
+              gatekeeper.sh/system: "yes"
+      ports:
+        - protocol: TCP
+          port: 8443
+  egress:
+    # Allow DNS only.
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: approval-verifier
+  namespace: gatekeeper-system
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: {app: approval-verifier}

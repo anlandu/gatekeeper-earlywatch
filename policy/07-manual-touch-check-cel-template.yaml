@@ -1,0 +1,37 @@
+# EarlyWatch ManualTouchCheck — CEL variant
+# Same caveat as the Rego version: depends on an out-of-band controller stamping
+# `earlywatch.io/last-manual-touch` (RFC3339) on the object.
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: ewmanualtouchcheckcel
+spec:
+  crd:
+    spec:
+      names:
+        kind: EWManualTouchCheckCEL
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            annotation:
+              type: string
+            windowSeconds:
+              type: integer
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      code:
+        - engine: K8sNativeValidation
+          source:
+            validations:
+              - expression: |
+                  !(
+                    request.operation == 'UPDATE' &&
+                    has(oldObject.metadata.annotations) &&
+                    oldObject.metadata.annotations[variables.params.annotation] != null &&
+                    (now - timestamp(oldObject.metadata.annotations[variables.params.annotation]))
+                      < duration(string(variables.params.windowSeconds) + 's')
+                  )
+                messageExpression: |
+                  'resource was manually touched within ' +
+                  string(variables.params.windowSeconds) + 's; update denied'

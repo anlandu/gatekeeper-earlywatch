@@ -1,0 +1,10 @@
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: EWExpressionCheckCELProdDelete
+metadata:
+  name: block-delete-in-production-namespace-cel-real
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["ConfigMap"]

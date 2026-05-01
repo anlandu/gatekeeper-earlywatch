@@ -1,0 +1,15 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: default
+spec:
+  template:
+    spec:
+      volumes:
+        - name: cfg
+          configMap:
+            name: app-config
+      containers:
+        - name: c
+          image: x

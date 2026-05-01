@@ -1,0 +1,11 @@
+# Gatekeeper external-data Provider pointing at the verifier service.
+# The caBundle is the PEM-encoded CA that signed approval-verifier-tls,
+# base64-encoded.
+apiVersion: externaldata.gatekeeper.sh/v1beta1
+kind: Provider
+metadata:
+  name: approval-verifier
+spec:
+  url: https://approval-verifier.gatekeeper-system.svc:8443/validate
+  timeout: 3
+  caBundle: REPLACE_WITH_BASE64_CA_BUNDLE

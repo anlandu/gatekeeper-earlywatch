@@ -1,0 +1,62 @@
+# EarlyWatch ServicePodSelectorCheck -> Gatekeeper referential constraint
+# Denies UPDATE of a non-headless Service when a selector that previously
+# matched Pods is changed to a selector matching zero Pods.
+# Requires Pods synced into data.inventory.
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: ewservicepodselectorcheck
+  annotations:
+    metadata.gatekeeper.sh/requires-sync-data: |
+      "[[{\"groups\":[\"\"], \"versions\":[\"v1\"], \"kinds\":[\"Pod\"]}]]"
+spec:
+  crd:
+    spec:
+      names:
+        kind: EWServicePodSelectorCheck
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      code:
+        - engine: Rego
+          source:
+            rego: |
+              package ewservicepodselectorcheck
+
+              import future.keywords.every
+
+              ns := input.review.object.metadata.namespace
+              old_selector := object.get(input.review.oldObject.spec, "selector", {})
+              new_selector := object.get(input.review.object.spec, "selector", {})
+
+              pod_matches_selector(pod, selector) {
+                # Kubernetes treats an empty/nil selector on a Service as "no
+                # automatic endpoints" — it explicitly does NOT match every pod.
+                # Guard against vacuous-true `every` over zero keys here.
+                count(selector) > 0
+                every k, v in selector {
+                  pod.metadata.labels[k] == v
+                }
+              }
+
+              selector_matches_any_pod(selector) {
+                some name
+                pod := data.inventory.namespace[ns]["v1"]["Pod"][name]
+                pod_matches_selector(pod, selector)
+              }
+
+              headless_service {
+                input.review.oldObject.spec.clusterIP == "None"
+              }
+              headless_service {
+                input.review.object.spec.clusterIP == "None"
+              }
+
+              violation[{"msg": msg}] {
+                input.review.kind.kind == "Service"
+                input.review.operation == "UPDATE"
+                not headless_service
+                selector_matches_any_pod(old_selector)
+                not selector_matches_any_pod(new_selector)
+                msg := sprintf("Service %q in namespace %q would have zero matching Pods",
+                  [input.review.object.metadata.name, ns])
+              }

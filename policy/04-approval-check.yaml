@@ -1,0 +1,97 @@
+# EarlyWatch ApprovalCheck -> Gatekeeper external-data provider
+#
+# RSA-PSS signature verification cannot be done in pure Rego; Gatekeeper supports
+# external-data providers (https://open-policy-agent.github.io/gatekeeper/website/docs/externaldata)
+# which call out to an HTTPS service that performs the cryptographic check.
+#
+# Below: a template that delegates verification to a Provider named "approval-verifier".
+# The provider must be deployed separately and is responsible for RSA-PSS verification
+# of the annotation value against a configured public key.
+---
+apiVersion: externaldata.gatekeeper.sh/v1beta1
+kind: Provider
+metadata:
+  name: approval-verifier
+spec:
+  url: https://approval-verifier.gatekeeper-system.svc:8443/validate
+  timeout: 3
+  caBundle: REPLACE_WITH_BASE64_CA_BUNDLE
+---
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: ewapprovalcheck
+spec:
+  crd:
+    spec:
+      names:
+        kind: EWApprovalCheck
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            annotationKey:
+              type: string
+            provider:
+              type: string
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package ewapprovalcheck
+
+        key := input.parameters.annotationKey
+        sig := input.review.oldObject.metadata.annotations[key]
+
+        violation[{"msg": msg}] {
+          input.review.operation == "DELETE"
+          not sig
+          msg := sprintf("missing approval signature annotation %q", [key])
+        }
+
+        violation[{"msg": msg}] {
+          input.review.operation == "DELETE"
+          sig
+          # Send the signature plus a canonical message ("<kind>/<namespace>/<name>")
+          # to the external verifier. The provider returns valid=true|false per item.
+          msg_to_verify := sprintf("%s/%s/%s",
+            [input.review.kind.kind,
+             input.review.oldObject.metadata.namespace,
+             input.review.oldObject.metadata.name])
+          response := external_data({
+            "provider": input.parameters.provider,
+            "keys": [sprintf("%s|%s", [msg_to_verify, sig])],
+          })
+          some i
+          response.responses[i][1] != "valid"
+          msg := sprintf("approval signature for %q rejected: %v",
+            [input.review.oldObject.metadata.name, response.responses[i][1]])
+        }
+
+        violation[{"msg": msg}] {
+          input.review.operation == "DELETE"
+          response := external_data({
+            "provider": input.parameters.provider,
+            "keys": [sprintf("%s/%s/%s|%s",
+              [input.review.kind.kind,
+               input.review.oldObject.metadata.namespace,
+               input.review.oldObject.metadata.name,
+               input.review.oldObject.metadata.annotations[key]])],
+          })
+          some i
+          response.system_error != ""
+          msg := sprintf("approval verifier error: %v", [response.system_error])
+        }
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: EWApprovalCheck
+metadata:
+  name: require-approval-signature
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["ConfigMap"]
+    namespaces: ["default"]
+  parameters:
+    annotationKey: "earlywatch.io/approved"
+    provider: "approval-verifier"

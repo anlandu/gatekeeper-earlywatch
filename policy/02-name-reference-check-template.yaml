@@ -1,0 +1,113 @@
+# EarlyWatch NameReferenceCheck -> Gatekeeper referential constraint (parametric)
+#
+# Generic over a list of referrer kinds, each with a list of dot-path "name fields"
+# to inspect. Paths may traverse arrays (e.g. spec.template.spec.volumes.configMap.name).
+#
+# Parameters mirror the EarlyWatch CV spec:
+#   sameNamespace: bool
+#   operations:    list of admission ops
+#   resources:
+#     - apiGroup: ""
+#       version:  v1
+#       kind:     Deployment
+#       nameFields:
+#         - spec.template.spec.volumes.configMap.name
+#         - spec.template.spec.containers.envFrom.configMapRef.name
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: ewnamereferencecheck
+  annotations:
+    # Inventory dependency varies by `resources[]`. Add each referrer kind to
+    # 00-config-sync.yaml. Typical referrers below; add more as needed:
+    metadata.gatekeeper.sh/requires-sync-data: |
+      "[[{\"groups\":[\"\"],\"versions\":[\"v1\"],\"kinds\":[\"Pod\"]},{\"groups\":[\"apps\"],\"versions\":[\"v1\"],\"kinds\":[\"Deployment\",\"StatefulSet\",\"DaemonSet\"]}]]"
+spec:
+  crd:
+    spec:
+      names:
+        kind: EWNameReferenceCheck
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            sameNamespace: {type: boolean}
+            operations:
+              type: array
+              items: {type: string}
+            resources:
+              type: array
+              items:
+                type: object
+                properties:
+                  apiGroup: {type: string}
+                  version:  {type: string}
+                  kind:     {type: string}
+                  nameFields:
+                    type: array
+                    items: {type: string}
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      code:
+        - engine: Rego
+          source:
+            rego: |
+              package ewnamereferencecheck
+
+              import future.keywords.in
+
+              target_name := input.review.oldObject.metadata.name
+              target_ns   := input.review.oldObject.metadata.namespace
+              params      := input.parameters
+
+              gv_for(r) := r.version { r.apiGroup == "" }
+              gv_for(r) := sprintf("%s/%s", [r.apiGroup, r.version]) { r.apiGroup != "" }
+
+              is_string_part(p) { is_string(p) }
+
+              # Every value in `obj` whose path (with array indices stripped) equals
+              # the configured dot-path.
+              value_at(obj, dotpath) := vals {
+                parts := split(dotpath, ".")
+                vals := { v |
+                  walk(obj, [path, v])
+                  string_path := [p | p := path[_]; is_string_part(p)]
+                  string_path == parts
+                }
+              }
+
+              referrer_objects(r) := objs {
+                # Default sameNamespace -> true to match upstream EarlyWatch
+                # (pkg/webhook/admission.go:412).
+                object.get(params, "sameNamespace", true) == true
+                objs := { name: o |
+                  o := data.inventory.namespace[target_ns][gv_for(r)][r.kind][name]
+                }
+              }
+              referrer_objects(r) := objs {
+                object.get(params, "sameNamespace", true) == false
+                objs := { name: o |
+                  some ns
+                  o := data.inventory.namespace[ns][gv_for(r)][r.kind][name]
+                }
+              }
+
+              offender[{"kind": kind, "name": ref_name}] {
+                some i
+                r := params.resources[i]
+                objs := referrer_objects(r)
+                some ref_name
+                o := objs[ref_name]
+                some j
+                field := r.nameFields[j]
+                target_name == value_at(o, field)[_]
+                kind := r.kind
+              }
+
+              violation[{"msg": msg}] {
+                input.review.operation in params.operations
+                off := offender[_]
+                msg := sprintf("%s %q cannot be %sd: %s %q still references it",
+                  [input.review.kind.kind, target_name,
+                   lower(input.review.operation), off.kind, off.name])
+              }
