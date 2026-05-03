@@ -1,0 +1,28 @@
+apiVersion: admission.k8s.io/v1
+kind: AdmissionReview
+request:
+  operation: UPDATE
+  kind:
+    group: ""
+    version: v1
+    kind: ConfigMap
+  name: app-config
+  namespace: default
+  oldObject:
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: app-config
+      namespace: default
+    data:
+      KEEP: "x"
+    binaryData:
+      CERT: eHl6
+  object:
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: app-config
+      namespace: default
+    data:
+      KEEP: "x"

@@ -5,10 +5,11 @@ validators, implemented as Gatekeeper `ConstraintTemplate`s + supporting
 infrastructure.
 
 The goal is **same functionality, in Gatekeeper** — not API compatibility
-with upstream EarlyWatch. Operators author Gatekeeper `Constraint`s; signing
-keys live in a Secret; signature verification runs in a small external-data
-provider; everything plugs into Gatekeeper's audit, dryrun, metrics, and
-testing pipeline.
+with upstream EarlyWatch. Operators author Gatekeeper `Constraint`s; approval
+public keys are supplied on `EWApprovalCheck` constraints and can be further
+restricted by a provider-mounted trusted-key Secret; signature verification
+runs in a small external-data provider; everything plugs into Gatekeeper's
+audit, dryrun, metrics, and testing pipeline.
 
 ## What's here
 
@@ -34,11 +35,11 @@ kustomization.yaml           Single-entrypoint apply order
 | 2 | Deny when other resources still reference this one by name            | `policy/02-name-reference-check-template.yaml`        | — referential |
 | 3 | Require an annotation (optionally with a specific value)              | `policy/03-annotation-check-template.yaml`            | ✅   |
 | 4 | Require a valid RSA-PSS signed approval annotation                    | `policy/04-approval-check-template.yaml`              | — needs crypto |
-| 5 | Honor a lock annotation that blocks delete (optionally update)        | `policy/05-check-lock-template.yaml`                  | ✅   |
+| 5 | Honor a lock annotation that blocks delete (optionally update)        | `policy/05-check-lock-template.yaml`                  | — generic diff |
 | 6 | Deny based on a CEL expression (parametric predicate set)             | `policy/06-expression-check-template.yaml`            | ✅   |
 | 6 | Deny based on a literal CEL expression (one template per expression)  | `policy/06-expression-check-real-cel-template.yaml`   | ✅ CEL-only |
 | 7 | Require a recent `ManualTouchEvent` CR before allowing the change     | `policy/07-manual-touch-check-template.yaml`          | — referential |
-| 7 | Annotation-based recent-touch check (no inventory)                    | `policy/07-manual-touch-check-cel-template.yaml`      | ✅ CEL-only |
+| 7 | Annotation-based recent-touch check (no inventory)                    | `policy/07-manual-touch-check-cel-template.yaml`      | — time/Rego |
 | 8 | Deny Service updates that orphan all matching Pods                    | `policy/08-service-pod-selector-check-template.yaml`  | — referential |
 | 9 | Deny ConfigMap/Secret updates that drop a key still in use            | `policy/09-data-key-safety-check-template.yaml`       | — referential |
 
@@ -62,10 +63,14 @@ go run ./cmd/gator verify ./earlywatch-gatekeeper/tests/...
 - **ApprovalCheck delegates crypto to an external-data Provider.** Pure Rego
   / CEL cannot do RSA-PSS or canonical merge-patch computation. The provider
   in `provider/` is a small distroless HTTPS service that runs alongside
-  Gatekeeper. Trusted public keys come from a mounted Secret
-  (`--trusted-keys-dir`), not from constraint parameters.
-- **Signed canonical path includes `metadata.uid`.** A captured signature
-  cannot be replayed against a recreated namesake. See
+  Gatekeeper. To preserve Gatekeeper-native constraints, the EarlyWatch public
+  key is passed as an `EWApprovalCheck` parameter; for stricter RBAC separation
+  the provider can also require that key to appear in a mounted trusted-key
+  Secret via `--trusted-keys-dir`.
+- **ApprovalCheck uses upstream-compatible signing payloads.** DELETE approvals
+  sign EarlyWatch `ResourcePath` strings (no UID), while UPDATE approvals sign
+  the upstream-normalized RFC 7396 merge patch after stripping status,
+  server-managed metadata, and the change-approval annotation. See
   [docs/threat-model.md](docs/threat-model.md).
 - **`requireValue` boolean on AnnotationCheck.** Explicit "key must be
   present" vs "key must equal this value." Cleaner than nil-vs-empty

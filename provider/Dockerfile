@@ -6,6 +6,6 @@ RUN CGO_ENABLED=0 go build -o /out/approval-verifier .
 
 FROM gcr.io/distroless/static:nonroot
 COPY --from=build /out/approval-verifier /approval-verifier
-USER nonroot:nonroot
+USER 65532:65532
 EXPOSE 8443
 ENTRYPOINT ["/approval-verifier"]

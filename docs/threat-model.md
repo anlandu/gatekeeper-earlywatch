@@ -31,11 +31,9 @@ write→ │ EWApprovalCheck CR  │  RBAC: update access = trust the publicKey 
 
 ## Defense-in-depth controls implemented
 
-- **UID binding**: signed canonical path includes `oldObject.metadata.uid`
-  so a captured signature cannot be replayed against a same-named recreated
-  object.
-- **Optional `notAfter`**: annotation `earlywatch.io/approval-not-after` lets
-  approvers issue short-lived approvals; expired ones deny.
+- **Upstream-compatible delete payloads**: DELETE approvals verify the same
+  EarlyWatch `ResourcePath` string that upstream `watchctl approve delete`
+  signs.
 - **Sanitized merge-patch**: server-managed metadata (`resourceVersion`,
   `uid`, `generation`, etc.) plus the change-approval annotation itself are
   stripped before computing the signed patch — otherwise every change-by-
@@ -55,6 +53,5 @@ write→ │ EWApprovalCheck CR  │  RBAC: update access = trust the publicKey 
 |---|---|---|
 | Constraint-author privesc | Use `--trusted-keys-dir`; tight RBAC on constraint kind | Move trusted key list out of constraint params entirely |
 | Provider compromise | NetworkPolicy + readonly rootfs + nonroot | Sign provider image; admission policy on the verifier image digest |
-| Replay across clusters | UID binding makes per-object replay impossible; cluster name is *not* in the canonical path | Include cluster name / API server URL in canonical path |
-| Side-channel: notAfter not enforced if annotation missing | Document; enable a strict-mode flag if mandatory | Add `parameters.requireNotAfter: true` |
+| Replay across recreated namesakes or clusters | Upstream-compatible delete approvals are path-based and do not include UID, cluster identity, or expiry | Add optional local hardening with UID/cluster/expiry-bound payloads, at the cost of upstream signing parity |
 | JSON canonicalization of patches with floats | Subset of JCS only | Adopt full RFC 8785 if floats appear in payload |

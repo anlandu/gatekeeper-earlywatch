@@ -1,0 +1,14 @@
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: EWExistingResources
+metadata:
+  name: service-empty-static-selector-matches-all
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Service"]
+  parameters:
+    operations: ["DELETE"]
+    existingResources:
+      kind: Pod
+      labelSelector: {}

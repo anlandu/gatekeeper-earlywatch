@@ -5,10 +5,11 @@
 // canonical message formats produced by 04-approval-check-template.yaml:
 //
 //	delete|<pem-public-key>|<canonical-path>|<base64-signature>
-//	update|<pem-public-key>|<old-json>|<new-json>|<base64-signature>
+//	update|<pem-public-key>|<change-annotation-key>|<base64-old-json>|<base64-new-json>|<base64-signature>
 //
-// For UPDATE the provider computes the RFC 7396 JSON merge-patch between
-// <old-json> and <new-json> and verifies the signature over that patch.
+// For UPDATE the provider decodes the old/new JSON objects, normalizes them
+// the same way upstream EarlyWatch does, computes the RFC 7396 JSON merge-patch,
+// and verifies the signature over that patch.
 //
 // Each incoming key is answered with ["<key>", "valid"] on success or
 // ["<key>", "<reason>"] on failure, matching the shape the ConstraintTemplate
@@ -151,20 +152,78 @@ func verifyPSS(pubPEM, message, sigB64 string) error {
 	return nil
 }
 
+const defaultChangeApprovalAnnotation = "earlywatch.io/change-approved"
+
+var serverManagedMetadataFields = []string{
+	"resourceVersion",
+	"generation",
+	"uid",
+	"creationTimestamp",
+	"managedFields",
+	"selfLink",
+}
+
+var topLevelServerManagedFields = []string{
+	"status",
+}
+
 // mergePatch computes the RFC 7396 JSON merge-patch from oldJSON -> newJSON.
-// The signed message for UPDATE is the canonical (sorted-key) JSON of that
-// patch — see canonicalJSON. This keeps verification deterministic across
-// signers regardless of map iteration order.
+// It is kept as the legacy/no-strip helper for tests and the pre-parity key
+// format. ApprovalCheck UPDATE verification should use normalizedMergePatch.
 func mergePatch(oldJSON, newJSON string) (string, error) {
-	var o, n any
-	if err := json.Unmarshal([]byte(oldJSON), &o); err != nil {
-		return "", fmt.Errorf("old json: %w", err)
+	return normalizedMergePatch(oldJSON, newJSON, nil)
+}
+
+// normalizedMergePatch mirrors upstream EarlyWatch's internal patch helper:
+// strip server-managed top-level and metadata fields, strip configured approval
+// annotations, remove empty/null annotation maps, then compute a canonical RFC
+// 7396 JSON merge patch.
+func normalizedMergePatch(oldJSON, newJSON string, stripAnnotations []string) (string, error) {
+	o, err := normalizeForPatch([]byte(oldJSON), stripAnnotations)
+	if err != nil {
+		return "", fmt.Errorf("normalizing old object: %w", err)
 	}
-	if err := json.Unmarshal([]byte(newJSON), &n); err != nil {
-		return "", fmt.Errorf("new json: %w", err)
+	n, err := normalizeForPatch([]byte(newJSON), stripAnnotations)
+	if err != nil {
+		return "", fmt.Errorf("normalizing new object: %w", err)
 	}
 	patch := diff(o, n)
 	return canonicalJSON(patch)
+}
+
+func normalizeForPatch(raw []byte, stripAnnotations []string) (map[string]any, error) {
+	var obj map[string]any
+	if err := json.Unmarshal(raw, &obj); err != nil {
+		return nil, fmt.Errorf("unmarshalling object: %w", err)
+	}
+
+	for _, field := range topLevelServerManagedFields {
+		delete(obj, field)
+	}
+
+	metadata, _ := obj["metadata"].(map[string]any)
+	if metadata != nil {
+		for _, field := range serverManagedMetadataFields {
+			delete(metadata, field)
+		}
+
+		if annotationsRaw, ok := metadata["annotations"]; ok {
+			if annotationsRaw == nil {
+				delete(metadata, "annotations")
+			} else if annotations, ok := annotationsRaw.(map[string]any); ok {
+				for _, key := range stripAnnotations {
+					delete(annotations, key)
+				}
+				if len(annotations) == 0 {
+					delete(metadata, "annotations")
+				}
+			}
+		}
+
+		obj["metadata"] = metadata
+	}
+
+	return obj, nil
 }
 
 // canonicalJSON emits JSON with object keys sorted lexicographically at every
@@ -268,9 +327,14 @@ func parseKey(key string) (op string, parts []string, err error) {
 				return op, nil, fmt.Errorf("delete: want 3 fields after op, got %d", len(parts))
 			}
 		case "update":
+			parts = strings.SplitN(rest, "|", 5)
+			if len(parts) == 5 {
+				return op, parts, nil
+			}
+			// Legacy raw-JSON key format: update|pub|old-json|new-json|sig.
 			parts = strings.SplitN(rest, "|", 4)
 			if len(parts) != 4 {
-				return op, nil, fmt.Errorf("update: want 4 fields after op, got %d", len(parts))
+				return op, nil, fmt.Errorf("update: want 5 fields (or 4 legacy fields) after op, got %d", len(parts))
 			}
 		default:
 			return op, nil, fmt.Errorf("unknown op %q", op)
@@ -293,8 +357,28 @@ func evaluate(key string) string {
 		}
 		return "valid"
 	case "update":
-		pub, oldJSON, newJSON, sig := parts[0], parts[1], parts[2], parts[3]
-		patch, err := mergePatch(oldJSON, newJSON)
+		var pub, oldJSON, newJSON, sig string
+		stripAnnotations := []string{defaultChangeApprovalAnnotation}
+		if len(parts) == 5 {
+			pub = parts[0]
+			annotationKey := parts[1]
+			if annotationKey == "" {
+				annotationKey = defaultChangeApprovalAnnotation
+			}
+			stripAnnotations = []string{annotationKey}
+			oldBytes, err := base64.StdEncoding.DecodeString(parts[2])
+			if err != nil {
+				return fmt.Sprintf("decode old object: %v", err)
+			}
+			newBytes, err := base64.StdEncoding.DecodeString(parts[3])
+			if err != nil {
+				return fmt.Sprintf("decode new object: %v", err)
+			}
+			oldJSON, newJSON, sig = string(oldBytes), string(newBytes), parts[4]
+		} else {
+			pub, oldJSON, newJSON, sig = parts[0], parts[1], parts[2], parts[3]
+		}
+		patch, err := normalizedMergePatch(oldJSON, newJSON, stripAnnotations)
 		if err != nil {
 			return err.Error()
 		}

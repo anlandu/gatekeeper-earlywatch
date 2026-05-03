@@ -1,10 +1,12 @@
 # EarlyWatch CheckLock -> Gatekeeper
-# Blocks DELETE (and UPDATE when lockUpdates=true) when `earlywatch.io/lock`
+# Blocks DELETE (and UPDATE when lockOnMutate=true) when `earlywatch.io/lock`
 # annotation is set to a non-empty value on the existing object.
 #
 # UPDATE has one practical escape hatch: an update that only removes/clears the
 # lock annotation is allowed, so a locked object can be unlocked without first
-# disabling the constraint.
+# disabling the constraint. This generic object-diff behavior requires Rego;
+# Kubernetes admission CEL cannot strip a nested annotation and compare the full
+# arbitrary object safely.
 apiVersion: templates.gatekeeper.sh/v1
 kind: ConstraintTemplate
 metadata:
@@ -46,14 +48,40 @@ spec:
                 v != ""
               }
 
-              without_lock_annotation(obj) := stripped {
-                metadata := object.get(obj, "metadata", {})
+              # Normalize enough to recognize an unlock-only update in live
+              # admission requests. Kubernetes may represent empty annotations
+              # as either an empty map or an absent field, and server-managed
+              # metadata can differ between oldObject and object.
+              metadata_strip_fields := {
+                "annotations",
+                "resourceVersion",
+                "generation",
+                "uid",
+                "creationTimestamp",
+                "managedFields",
+                "selfLink",
+              }
+
+              clean_metadata(metadata) := clean {
                 annotations := object.get(metadata, "annotations", {})
                 clean_annotations := object.remove(annotations, {annotation_key})
-                base_metadata := object.remove(metadata, {"annotations"})
-                clean_metadata := object.union(base_metadata, {"annotations": clean_annotations})
-                base_obj := object.remove(obj, {"metadata"})
-                stripped := object.union(base_obj, {"metadata": clean_metadata})
+                base_metadata := object.remove(metadata, metadata_strip_fields)
+                count(clean_annotations) == 0
+                clean := base_metadata
+              }
+
+              clean_metadata(metadata) := clean {
+                annotations := object.get(metadata, "annotations", {})
+                clean_annotations := object.remove(annotations, {annotation_key})
+                base_metadata := object.remove(metadata, metadata_strip_fields)
+                count(clean_annotations) > 0
+                clean := object.union(base_metadata, {"annotations": clean_annotations})
+              }
+
+              without_lock_annotation(obj) := stripped {
+                metadata := object.get(obj, "metadata", {})
+                base_obj := object.remove(obj, {"metadata", "status"})
+                stripped := object.union(base_obj, {"metadata": clean_metadata(metadata)})
               }
 
               unlock_only_update {
@@ -76,39 +104,3 @@ spec:
                 msg := sprintf("resource %q is locked by %q; update denied",
                   [input.review.oldObject.metadata.name, annotation_key])
               }
-        - engine: K8sNativeValidation
-          source:
-            validations:
-              # Locked when annotation is present and non-empty on the existing
-              # object. Deny DELETE always; deny UPDATE when lockOnMutate=true,
-              # except when the update only clears the lock annotation
-              # (i.e. new object has no/empty lock and is otherwise identical
-              # to old object after stripping the lock annotation).
-              - expression: |
-                  !(
-                    (
-                      request.operation == 'DELETE' &&
-                      has(oldObject.metadata.annotations) &&
-                      variables.params.annotation in oldObject.metadata.annotations &&
-                      oldObject.metadata.annotations[variables.params.annotation] != ''
-                    ) ||
-                    (
-                      request.operation == 'UPDATE' &&
-                      variables.params.lockOnMutate == true &&
-                      has(oldObject.metadata.annotations) &&
-                      variables.params.annotation in oldObject.metadata.annotations &&
-                      oldObject.metadata.annotations[variables.params.annotation] != '' &&
-                      !(
-                        // unlock-only update: new object has lock cleared/missing
-                        // AND old/new are identical apart from that annotation.
-                        (!has(object.metadata.annotations) ||
-                         !(variables.params.annotation in object.metadata.annotations) ||
-                         object.metadata.annotations[variables.params.annotation] == '') &&
-                        object.metadata.annotations.filter(k, k != variables.params.annotation) ==
-                          oldObject.metadata.annotations.filter(k, k != variables.params.annotation) &&
-                        object.spec == oldObject.spec
-                      )
-                    )
-                  )
-                messageExpression: |
-                  'resource is locked by ' + variables.params.annotation

@@ -1,0 +1,17 @@
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: EWExistingResources
+metadata:
+  name: service-field-selector-wins-over-static
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Service"]
+  parameters:
+    operations: ["DELETE"]
+    existingResources:
+      kind: Pod
+      labelSelectorFromField: spec.selector
+      labelSelector:
+        matchLabels:
+          tier: production

@@ -137,6 +137,24 @@ tests:
           - service-selector/pod-matching.yaml
         assertions:
           - violations: no
+      - name: allow-when-new-selector-is-empty-map-and-pods-exist
+        object: service-selector/svc-update-new-empty-selector.yaml
+        inventory:
+          - service-selector/pod-matching.yaml
+        assertions:
+          - violations: no
+      - name: deny-when-old-empty-selector-matched-pods-and-new-selector-matches-none
+        object: service-selector/svc-update-old-empty-selector.yaml
+        inventory:
+          - service-selector/pod-nonmatching.yaml
+        assertions:
+          - violations: yes
+      - name: deny-when-non-headless-service-changes-to-headless-and-new-selector-matches-none
+        object: service-selector/svc-update-to-headless.yaml
+        inventory:
+          - service-selector/pod-matching.yaml
+        assertions:
+          - violations: yes
 
   - name: expression-check-regex
     template: ../policy/06-expression-check-template.yaml
@@ -171,6 +189,12 @@ tests:
           - datakey/pod-references-kept-key.yaml
         assertions:
           - violations: no
+      - name: deny-when-binary-data-key-still-referenced
+        object: datakey/cm-update-drop-binary-key.yaml
+        inventory:
+          - datakey/pod-references-binary-key.yaml
+        assertions:
+          - violations: yes
 
   - name: existing-resources-static-selector
     template: ../policy/01-existing-resources-template.yaml
@@ -186,6 +210,79 @@ tests:
         object: existing-resources-static/svc-delete.yaml
         inventory:
           - existing-resources-static/pod-dev.yaml
+        assertions:
+          - violations: no
+
+  - name: existing-resources-upstream-parity
+    template: ../policy/01-existing-resources-template.yaml
+    constraint: existing-resources-parity/no-selector-constraint.yaml
+    cases:
+      - name: deny-no-selector-matches-any-dependent
+        object: existing-resources/svc-delete.yaml
+        inventory:
+          - existing-resources/pod-nonmatching.yaml
+        assertions:
+          - violations: yes
+
+  - name: existing-resources-empty-static-selector
+    template: ../policy/01-existing-resources-template.yaml
+    constraint: existing-resources-parity/empty-static-selector-constraint.yaml
+    cases:
+      - name: deny-empty-static-selector-matches-any-dependent
+        object: existing-resources/svc-delete.yaml
+        inventory:
+          - existing-resources/pod-nonmatching.yaml
+        assertions:
+          - violations: yes
+
+  - name: existing-resources-field-selector-precedence
+    template: ../policy/01-existing-resources-template.yaml
+    constraint: existing-resources-parity/field-wins-over-static-constraint.yaml
+    cases:
+      - name: allow-when-field-selector-does-not-match-even-if-static-would
+        object: existing-resources/svc-delete.yaml
+        inventory:
+          - existing-resources-static/pod-prod.yaml
+        assertions:
+          - violations: no
+
+  - name: existing-resources-namespace-delete-scope
+    template: ../policy/01-existing-resources-template.yaml
+    constraint: existing-resources-parity/namespace-delete-constraint.yaml
+    cases:
+      - name: deny-namespace-delete-when-dependent-exists-inside-namespace
+        object: existing-resources-parity/ns-delete.yaml
+        inventory:
+          - existing-resources-parity/pod-in-prod.yaml
+        assertions:
+          - violations: yes
+
+  - name: manual-touch-check
+    template: ../policy/07-manual-touch-check-template.yaml
+    constraint: ../policy/07-manual-touch-check-constraint.yaml
+    cases:
+      - name: deny-update-when-recent-matching-event-exists
+        object: manualtouch/deploy-update.yaml
+        inventory:
+          - manualtouch/recent-event.yaml
+        assertions:
+          - violations: yes
+      - name: allow-update-when-only-stale-event-exists
+        object: manualtouch/deploy-update.yaml
+        inventory:
+          - manualtouch/stale-event.yaml
+        assertions:
+          - violations: no
+      - name: allow-update-when-event-targets-other-resource
+        object: manualtouch/deploy-update.yaml
+        inventory:
+          - manualtouch/other-event.yaml
+        assertions:
+          - violations: no
+      - name: allow-delete-when-operations-only-include-update
+        object: manualtouch/deploy-delete.yaml
+        inventory:
+          - manualtouch/recent-event.yaml
         assertions:
           - violations: no
 

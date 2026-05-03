@@ -1,13 +1,12 @@
-# EarlyWatch ApprovalCheck -> Gatekeeper external-data provider
+# EarlyWatch ApprovalCheck -> Gatekeeper external-data Provider (standalone bundle)
 #
-# RSA-PSS signature verification cannot be done in pure Rego; Gatekeeper supports
-# external-data providers (https://open-policy-agent.github.io/gatekeeper/website/docs/externaldata)
-# which call out to an HTTPS service that performs the cryptographic check.
-#
-# Below: a template that delegates verification to a Provider named "approval-verifier".
-# The provider must be deployed separately and is responsible for RSA-PSS verification
-# of the annotation value against a configured public key.
+# This file combines the Provider stub, current ConstraintTemplate, and sample
+# Constraint for ad-hoc installs. For the normal ordered install, prefer
+# kustomization.yaml plus provider/manifests/*.yaml.
 ---
+# Gatekeeper external-data Provider pointing at the verifier service.
+# The caBundle is the PEM-encoded CA that signed approval-verifier-tls,
+# base64-encoded.
 apiVersion: externaldata.gatekeeper.sh/v1beta1
 kind: Provider
 metadata:
@@ -17,6 +16,25 @@ spec:
   timeout: 3
   caBundle: REPLACE_WITH_BASE64_CA_BUNDLE
 ---
+# EarlyWatch ApprovalCheck -> Gatekeeper external-data Provider
+#
+# Mirrors the full EarlyWatch surface:
+#   annotationKey         (default earlywatch.io/approved)        - DELETE signatures
+#   changeAnnotationKey   (default earlywatch.io/change-approved) - UPDATE signatures
+#   publicKey             - PEM RSA public key (passed through to verifier)
+#
+# DELETE: verifier signs the canonical resource path:
+#     v1/namespaces/<ns>/<resource>/<name>                  (core namespaced)
+#     v1/<resource>/<name>                                  (core cluster-scoped)
+#     <group>/<version>/namespaces/<ns>/<resource>/<name>   (group namespaced)
+#     <group>/<version>/<resource>/<name>                   (group cluster-scoped)
+# UPDATE: verifier signs the JSON merge-patch (RFC 7396) between old and new,
+#         with managed metadata fields and the change-approval annotation
+#         itself stripped before signing.
+#
+# Pure Rego cannot do RSA-PSS verification or canonical JSON merge-patch
+# computation; both are delegated to the external-data Provider defined in
+# ../provider/manifests/provider.yaml.
 apiVersion: templates.gatekeeper.sh/v1
 kind: ConstraintTemplate
 metadata:
@@ -30,57 +48,150 @@ spec:
         openAPIV3Schema:
           type: object
           properties:
-            annotationKey:
-              type: string
-            provider:
-              type: string
+            annotationKey:       {type: string}
+            changeAnnotationKey: {type: string}
+            publicKey:           {type: string}
+            provider:            {type: string}
   targets:
     - target: admission.k8s.gatekeeper.sh
-      rego: |
-        package ewapprovalcheck
+      code:
+        - engine: Rego
+          source:
+            rego: |
+              package ewapprovalcheck
 
-        key := input.parameters.annotationKey
-        sig := input.review.oldObject.metadata.annotations[key]
+              del_key := k {
+                k := input.parameters.annotationKey
+                k != ""
+              } else := "earlywatch.io/approved"
 
-        violation[{"msg": msg}] {
-          input.review.operation == "DELETE"
-          not sig
-          msg := sprintf("missing approval signature annotation %q", [key])
-        }
+              upd_key := k {
+                k := input.parameters.changeAnnotationKey
+                k != ""
+              } else := "earlywatch.io/change-approved"
 
-        violation[{"msg": msg}] {
-          input.review.operation == "DELETE"
-          sig
-          # Send the signature plus a canonical message ("<kind>/<namespace>/<name>")
-          # to the external verifier. The provider returns valid=true|false per item.
-          msg_to_verify := sprintf("%s/%s/%s",
-            [input.review.kind.kind,
-             input.review.oldObject.metadata.namespace,
-             input.review.oldObject.metadata.name])
-          response := external_data({
-            "provider": input.parameters.provider,
-            "keys": [sprintf("%s|%s", [msg_to_verify, sig])],
-          })
-          some i
-          response.responses[i][1] != "valid"
-          msg := sprintf("approval signature for %q rejected: %v",
-            [input.review.oldObject.metadata.name, response.responses[i][1]])
-        }
+              provider_name := p {
+                p := input.parameters.provider
+                p != ""
+              } else := "approval-verifier"
 
-        violation[{"msg": msg}] {
-          input.review.operation == "DELETE"
-          response := external_data({
-            "provider": input.parameters.provider,
-            "keys": [sprintf("%s/%s/%s|%s",
-              [input.review.kind.kind,
-               input.review.oldObject.metadata.namespace,
-               input.review.oldObject.metadata.name,
-               input.review.oldObject.metadata.annotations[key]])],
-          })
-          some i
-          response.system_error != ""
-          msg := sprintf("approval verifier error: %v", [response.system_error])
-        }
+              request_group := object.get(input.review.kind, "group", "")
+              request_version := object.get(input.review.kind, "version", "v1")
+              request_resource := input.review.resource.resource
+              request_namespace := object.get(input.review, "namespace", "")
+              request_name := input.review.name
+
+              resource_prefix := p {
+                request_group == ""
+                p := request_version
+              } else := p {
+                p := sprintf("%s/%s", [request_group, request_version])
+              }
+
+              # ---------- DELETE ----------
+              del_sig := input.review.oldObject.metadata.annotations[del_key]
+
+              canonical_path := p {
+                request_namespace != ""
+                p := sprintf("%s/namespaces/%s/%s/%s",
+                  [resource_prefix, request_namespace, request_resource, request_name])
+              } else := p {
+                p := sprintf("%s/%s/%s",
+                  [resource_prefix, request_resource, request_name])
+              }
+
+              delete_key := sprintf("delete|%s|%s|%s",
+                [input.parameters.publicKey, canonical_path, del_sig])
+
+              delete_response := response {
+                input.review.operation == "DELETE"
+                del_sig
+                response := external_data({
+                  "provider": provider_name,
+                  "keys": [delete_key],
+                })
+              }
+
+              violation[{"msg": msg}] {
+                input.review.operation == "DELETE"
+                not del_sig
+                msg := sprintf("missing delete-approval annotation %q", [del_key])
+              }
+              violation[{"msg": msg}] {
+                response := delete_response
+                some i
+                response.responses[i][1] != "valid"
+                msg := sprintf("delete approval rejected: %v", [response.responses[i][1]])
+              }
+
+              # ---------- UPDATE ----------
+              # Upstream EarlyWatch reads the change-approval annotation off the
+              # *new* object. The provider receives raw old/new JSON and performs
+              # upstream-equivalent normalization before computing the signed patch.
+              upd_sig := input.review.object.metadata.annotations[upd_key]
+
+              update_key := sprintf("update|%s|%s|%s|%s|%s",
+                [input.parameters.publicKey,
+                 upd_key,
+                 base64.encode(json.marshal(input.review.oldObject)),
+                 base64.encode(json.marshal(input.review.object)),
+                 upd_sig])
+
+              update_response := response {
+                input.review.operation == "UPDATE"
+                upd_sig
+                response := external_data({
+                  "provider": provider_name,
+                  "keys": [update_key],
+                })
+              }
+
+              violation[{"msg": msg}] {
+                input.review.operation == "UPDATE"
+                not upd_sig
+                msg := sprintf("missing change-approval annotation %q", [upd_key])
+              }
+              violation[{"msg": msg}] {
+                response := update_response
+                some i
+                response.responses[i][1] != "valid"
+                msg := sprintf("change approval rejected: %v", [response.responses[i][1]])
+              }
+
+              # ---------- Fail-closed on provider errors ----------
+              # If the external-data call returns a system error, per-key errors,
+              # or no responses at all (provider unreachable, timeout, malformed
+              # reply), deny rather than fail open. Approval is security-critical.
+              violation[{"msg": msg}] {
+                response := delete_response
+                object.get(response, "system_error", "") != ""
+                msg := sprintf("approval verifier system error: %v", [response.system_error])
+              }
+              violation[{"msg": msg}] {
+                response := update_response
+                object.get(response, "system_error", "") != ""
+                msg := sprintf("approval verifier system error: %v", [response.system_error])
+              }
+              violation[{"msg": msg}] {
+                response := delete_response
+                count(object.get(response, "errors", [])) > 0
+                msg := sprintf("approval verifier returned errors: %v", [response.errors])
+              }
+              violation[{"msg": msg}] {
+                response := update_response
+                count(object.get(response, "errors", [])) > 0
+                msg := sprintf("approval verifier returned errors: %v", [response.errors])
+              }
+              violation[{"msg": msg}] {
+                response := delete_response
+                count(object.get(response, "responses", [])) == 0
+                msg := "approval verifier returned no responses (fail closed)"
+              }
+              violation[{"msg": msg}] {
+                response := update_response
+                count(object.get(response, "responses", [])) == 0
+                msg := "approval verifier returned no responses (fail closed)"
+              }
 ---
 apiVersion: constraints.gatekeeper.sh/v1beta1
 kind: EWApprovalCheck
@@ -94,4 +205,9 @@ spec:
     namespaces: ["default"]
   parameters:
     annotationKey: "earlywatch.io/approved"
+    changeAnnotationKey: "earlywatch.io/change-approved"
+    publicKey: |
+      -----BEGIN PUBLIC KEY-----
+      REPLACE_WITH_YOUR_RSA_PUBLIC_KEY
+      -----END PUBLIC KEY-----
     provider: "approval-verifier"

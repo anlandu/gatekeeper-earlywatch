@@ -8,5 +8,6 @@ spec:
       - apiGroups: ["apps"]
         kinds: ["Deployment"]
   parameters:
+    operations: ["UPDATE"]
     windowDuration: "2h"
     eventNamespace: "early-watch-system"

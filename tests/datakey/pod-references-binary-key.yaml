@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: refers-binary
+  namespace: default
+spec:
+  containers:
+    - name: c
+      image: x
+      env:
+        - name: VAL
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: CERT

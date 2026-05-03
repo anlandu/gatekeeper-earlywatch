@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: prod-pod
+  namespace: prod
+spec:
+  containers: []
