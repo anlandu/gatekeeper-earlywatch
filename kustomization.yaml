@@ -32,9 +32,10 @@ resources:
   - provider/manifests/provider.yaml
   - provider/manifests/hardening.yaml
 
-  # 4. Manual-touch producer (optional, replace with upstream monitor for full
-  #    audit-log fidelity).
-  - touch-monitor/manifests/cronjob.yaml
+  # 4. Manual-touch audit-webhook producer. Kubernetes API server audit
+  #    webhook configuration is external to this kustomization; see
+  #    touch-monitor/README.md.
+  - touch-monitor/manifests/audit-monitor.yaml
 
   # 5. Constraints last so the templates and provider are guaranteed to exist.
   - policy/01-existing-resources-constraint.yaml

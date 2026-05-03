@@ -20,9 +20,9 @@ audit, dryrun, metrics, and testing pipeline.
                              `code: [{engine: K8sNativeValidation}]` so Gatekeeper
                              picks the CEL path when VAP is enabled, Rego otherwise.
 provider/                    External-data provider for ApprovalCheck (Go service)
-touch-monitor/               CronJob that produces ManualTouchEvent CRs
+touch-monitor/               Audit-webhook service that produces ManualTouchEvent CRs
 tests/                       gator verify suite + AdmissionReview/inventory fixtures
-docs/                        Threat model, GitOps notes
+docs/                        Threat model, GitOps notes, parity map
 watchctl/                    CLI for signing approvals (ApprovalCheck)
 kustomization.yaml           Single-entrypoint apply order
 ```
@@ -36,9 +36,9 @@ kustomization.yaml           Single-entrypoint apply order
 | 3 | Require an annotation (optionally with a specific value)              | `policy/03-annotation-check-template.yaml`            | ✅   |
 | 4 | Require a valid RSA-PSS signed approval annotation                    | `policy/04-approval-check-template.yaml`              | — needs crypto |
 | 5 | Honor a lock annotation that blocks delete (optionally update)        | `policy/05-check-lock-template.yaml`                  | — generic diff |
-| 6 | Deny based on a CEL expression (parametric predicate set)             | `policy/06-expression-check-template.yaml`            | ✅   |
-| 6 | Deny based on a literal CEL expression (one template per expression)  | `policy/06-expression-check-real-cel-template.yaml`   | ✅ CEL-only |
-| 7 | Require a recent `ManualTouchEvent` CR before allowing the change     | `policy/07-manual-touch-check-template.yaml`          | — referential |
+| 6 | Deny based on structured expression predicates                       | `policy/06-expression-check-template.yaml`            | ✅   |
+| 6 | Deny based on authored native-CEL expressions                        | `policy/06-expression-check-real-cel-template.yaml`   | ✅   |
+| 7 | Deny when a recent matching `ManualTouchEvent` CR exists              | `policy/07-manual-touch-check-template.yaml`          | — referential |
 | 7 | Annotation-based recent-touch check (no inventory)                    | `policy/07-manual-touch-check-cel-template.yaml`      | — time/Rego |
 | 8 | Deny Service updates that orphan all matching Pods                    | `policy/08-service-pod-selector-check-template.yaml`  | — referential |
 | 9 | Deny ConfigMap/Secret updates that drop a key still in use            | `policy/09-data-key-safety-check-template.yaml`       | — referential |
@@ -55,8 +55,10 @@ go run ./cmd/gator verify ./earlywatch-gatekeeper/tests/...
 
 ## Design choices
 
-- **One Constraint per rule.** Gatekeeper's native model. Each validator is a
-  `ConstraintTemplate` you parameterize per use case via a `Constraint`.
+- **Reusable templates, many constraints.** Each validator type is a
+  `ConstraintTemplate`; operators can create as many `Constraint`s as needed
+  from that template, each with its own match scope, parameters, and
+  `enforcementAction`.
 - **Referential checks read `data.inventory`.** Each referential template
   carries a `metadata.gatekeeper.sh/requires-sync-data` annotation listing
   the GVKs that must be synced via `policy/00-config-sync.yaml`.
@@ -67,6 +69,13 @@ go run ./cmd/gator verify ./earlywatch-gatekeeper/tests/...
   key is passed as an `EWApprovalCheck` parameter; for stricter RBAC separation
   the provider can also require that key to appear in a mounted trusted-key
   Secret via `--trusted-keys-dir`.
+- **ManualTouchMonitor is implemented as an audit-webhook service.**
+  Gatekeeper policies cannot natively consume Kubernetes audit webhook events,
+  so `touch-monitor/` receives audit `EventList` batches at `/audit`, matches
+  `ManualTouchMonitor` CRs, and creates EarlyWatch-compatible
+  `ManualTouchEvent` CRs for `EWManualTouchCheck`. API-server audit webhook
+  configuration remains an out-of-band cluster-admin step; see
+  [touch-monitor/README.md](touch-monitor/README.md).
 - **ApprovalCheck uses upstream-compatible signing payloads.** DELETE approvals
   sign EarlyWatch `ResourcePath` strings (no UID), while UPDATE approvals sign
   the upstream-normalized RFC 7396 merge patch after stripping status,
@@ -75,13 +84,28 @@ go run ./cmd/gator verify ./earlywatch-gatekeeper/tests/...
 - **`requireValue` boolean on AnnotationCheck.** Explicit "key must be
   present" vs "key must equal this value." Cleaner than nil-vs-empty
   string handling.
-- **ExpressionCheck offers two flavors.** A parametric Rego predicate set
-  (operationIn / namespaceIn / regex) for common patterns, and a true-CEL
-  one-template-per-expression pattern for the cases the predicate set can't
-  express. CEL has no `eval(string)`, so a fully parametric CEL version is
-  not possible.
+- **ExpressionCheck has two supported forms.** `EWExpressionCheck` exposes a
+  portable structured schema (`operationIn`, `namespaceIn`, `namespaceRegex`,
+  `nameIn`, `nameRegex`) with both Rego and native CEL implementations for
+  common predicates. For arbitrary CEL, author one native-CEL
+  `ConstraintTemplate` per expression, as shown by
+  `policy/06-expression-check-real-cel-template.yaml`. Gatekeeper cannot
+  dynamically `eval()` a CEL expression passed as a constraint parameter, so
+  arbitrary expressions live in templates instead of runtime strings.
 - **`GuardRule.message` is not a parameter today.** Templates produce a
   default denial message; to customize, fork the template.
+
+## EarlyWatch parity
+
+The current parity map, evidence, and known limitations are tracked in
+[docs/earlywatch-parity.md](docs/earlywatch-parity.md). Two important operator
+notes:
+
+- For ApprovalCheck DELETE parity, Gatekeeper's validating webhook must include
+  the `DELETE` operation (some installs default to CREATE/UPDATE only).
+- For ManualTouchMonitor parity, configure the Kubernetes API server audit
+  webhook backend to deliver `ResponseComplete` audit batches to the
+  `manual-touch-monitor` Service.
 
 ## Operational features Gatekeeper provides
 

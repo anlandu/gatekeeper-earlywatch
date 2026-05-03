@@ -76,9 +76,17 @@ spec:
               new_keys := data_keys(input.review.object)
               removed_keys := old_keys - new_keys
 
-              gv_for(r) := r.version              { r.apiGroup == "" }
-              gv_for(r) := sprintf("%s/%s",
-                           [r.apiGroup, r.version]) { r.apiGroup != "" }
+              resource_version(r) := v {
+                v := object.get(r, "version", "v1")
+                v != ""
+              } else := "v1"
+
+              gv_for(r) := resource_version(r) {
+                object.get(r, "apiGroup", "") == ""
+              }
+              gv_for(r) := sprintf("%s/%s", [object.get(r, "apiGroup", ""), resource_version(r)]) {
+                object.get(r, "apiGroup", "") != ""
+              }
 
               is_string_part(p) { is_string(p) }
 
@@ -121,13 +129,13 @@ spec:
                 # Default sameNamespace -> true to match upstream EarlyWatch
                 # (DataKeySafetyCheck.SameNamespace +kubebuilder:default=true).
                 object.get(params, "sameNamespace", true) == true
-                objs := { name: o |
+                objs := { sprintf("%s/%s", [target_ns, name]): o |
                   o := data.inventory.namespace[target_ns][gv_for(r)][r.kind][name]
                 }
               }
               referrer_objects(r) := objs {
                 object.get(params, "sameNamespace", true) == false
-                objs := { name: o |
+                objs := { sprintf("%s/%s", [ns, name]): o |
                   some ns
                   o := data.inventory.namespace[ns][gv_for(r)][r.kind][name]
                 }

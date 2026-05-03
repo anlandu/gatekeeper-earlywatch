@@ -1,13 +1,14 @@
-# EarlyWatch ExpressionCheck — true CEL pass-through.
+# EarlyWatch ExpressionCheck — native-CEL expression form.
 #
 # Gatekeeper CEL templates compile their expression at template-creation time;
-# CEL has no eval(string), so the expression CANNOT be a constraint parameter.
-# The supported parity model is: one ConstraintTemplate per CEL expression.
+# CEL has no eval(string), so the expression cannot be supplied as a runtime
+# constraint parameter. The supported arbitrary-CEL parity model is: author one
+# ConstraintTemplate per expression.
 #
-# This file is a worked example that mirrors the EarlyWatch sample
-#   `expression: "namespace == 'production'"` (deny when true).
-# Operators duplicate the template, change the metadata.name + kind, and
-# replace the `expression` body to author additional rules.
+# This file is a worked example that blocks DELETE when the existing object has
+# metadata.labels["earlywatch-protected"] == "true". It intentionally references
+# oldObject.metadata.labels to demonstrate native CEL over object/request fields
+# beyond the reusable structured helper in 06-expression-check-template.yaml.
 #
 # Variables exposed to CEL:
 #   request.{operation,namespace,name,kind,resource,subResource,uid,…}
@@ -15,24 +16,36 @@
 #
 # IMPORTANT: Gatekeeper templates evaluate to "deny when expression is FALSE"
 # (the validation expression states the *allowed* condition). To match
-# EarlyWatch's "deny when true" semantics, we negate.
+# EarlyWatch's "deny when true" ExpressionCheck semantics, negate the deny
+# predicate below.
 apiVersion: templates.gatekeeper.sh/v1
 kind: ConstraintTemplate
 metadata:
-  name: ewexpressioncheckcelproddelete
+  name: ewexpressioncheckcelprotecteddelete
 spec:
   crd:
     spec:
       names:
-        kind: EWExpressionCheckCELProdDelete
+        kind: EWExpressionCheckCELProtectedDelete
   targets:
     - target: admission.k8s.gatekeeper.sh
       code:
         - engine: K8sNativeValidation
           source:
             validations:
-              # EarlyWatch:  expression: "namespace == 'production'"
-              # Gatekeeper (negated, allowed-when-true):
-              - expression: "!(request.namespace == 'production' && request.operation == 'DELETE')"
+              # EarlyWatch-style deny predicate:
+              #   request.operation == 'DELETE' &&
+              #   oldObject.metadata.labels['earlywatch-protected'] == 'true'
+              # Gatekeeper validation expressions are allowed-when-true, so this
+              # is negated to preserve EarlyWatch deny-when-true semantics.
+              - expression: |
+                  !(request.operation == 'DELETE' &&
+                    oldObject != null &&
+                    has(oldObject.metadata) &&
+                    has(oldObject.metadata.labels) &&
+                    'earlywatch-protected' in oldObject.metadata.labels &&
+                    oldObject.metadata.labels['earlywatch-protected'] == 'true')
                 messageExpression: |
-                  request.operation + ' in namespace ' + request.namespace + ' is not permitted'
+                  request.operation + ' of ' + request.name +
+                    ' is not permitted because the existing object has ' +
+                    'earlywatch-protected=true'

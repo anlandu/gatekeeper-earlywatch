@@ -14,17 +14,24 @@ request:
     metadata:
       name: web
       namespace: default
+      labels:
+        app: web
       annotations:
-        earlywatch.io/lock: "true"
+        earlywatch.io/lock: "ticket-123"
     spec:
       replicas: 2
+    status:
+      availableReplicas: 1
   object:
     apiVersion: apps/v1
     kind: Deployment
     metadata:
       name: web
       namespace: default
-      annotations:
-        earlywatch.io/lock: "true"
+      labels:
+        app: web
+      annotations: {}
     spec:
-      replicas: 3
+      replicas: 2
+    status:
+      availableReplicas: 2

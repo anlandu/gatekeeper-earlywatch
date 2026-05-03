@@ -37,6 +37,17 @@ tests:
         assertions:
           - violations: no
 
+  - name: name-reference-check-default-version
+    template: ../policy/02-name-reference-check-template.yaml
+    constraint: name-reference/default-version-constraint.yaml
+    cases:
+      - name: deny-delete-when-resource-version-omitted-defaults-to-v1
+        object: name-reference/cm-delete.yaml
+        inventory:
+          - name-reference/dep-references.yaml
+        assertions:
+          - violations: yes
+
   - name: annotation-check
     template: ../policy/03-annotation-check-template.yaml
     constraint: ../policy/03-annotation-check-constraint.yaml
@@ -74,8 +85,16 @@ tests:
         object: checklock/dep-update-unlock-only.yaml
         assertions:
           - violations: no
+      - name: allow-lock-annotation-value-only-update
+        object: checklock/dep-update-lock-value-only.yaml
+        assertions:
+          - violations: no
       - name: deny-unlock-plus-other-change
         object: checklock/dep-update-unlock-and-change.yaml
+        assertions:
+          - violations: yes
+      - name: deny-unlock-plus-status-change
+        object: checklock/dep-update-unlock-and-status-change.yaml
         assertions:
           - violations: yes
       - name: allow-delete-when-unlocked
@@ -173,6 +192,19 @@ tests:
         assertions:
           - violations: no
 
+  - name: expression-check-real-cel
+    template: ../policy/06-expression-check-real-cel-template.yaml
+    constraint: ../policy/06-expression-check-real-cel-constraint.yaml
+    cases:
+      - name: deny-delete-when-old-object-has-protected-label
+        object: expression/cm-delete-protected-label.yaml
+        assertions:
+          - violations: yes
+      - name: allow-delete-when-protected-label-is-not-true
+        object: expression/cm-delete-unprotected-label.yaml
+        assertions:
+          - violations: no
+
   - name: data-key-safety-check
     template: ../policy/09-data-key-safety-check-template.yaml
     constraint: ../policy/09-data-key-safety-check-constraint.yaml
@@ -193,6 +225,17 @@ tests:
         object: datakey/cm-update-drop-binary-key.yaml
         inventory:
           - datakey/pod-references-binary-key.yaml
+        assertions:
+          - violations: yes
+
+  - name: data-key-safety-check-default-version
+    template: ../policy/09-data-key-safety-check-template.yaml
+    constraint: datakey/default-version-constraint.yaml
+    cases:
+      - name: deny-when-resource-version-omitted-defaults-to-v1
+        object: datakey/cm-update-drop-key.yaml
+        inventory:
+          - datakey/pod-references-removed-key.yaml
         assertions:
           - violations: yes
 
@@ -286,19 +329,6 @@ tests:
         assertions:
           - violations: no
 
-  # Real-CEL pass-through ExpressionCheck (one template per CEL expression).
-  - name: expression-check-real-cel
-    template: ../policy/06-expression-check-real-cel-template.yaml
-    constraint: ../policy/06-expression-check-real-cel-constraint.yaml
-    cases:
-      - name: deny-delete-in-production
-        object: expression/cm-delete-prod.yaml
-        assertions:
-          - violations: yes
-      - name: allow-delete-elsewhere
-        object: expression/cm-delete-staging.yaml
-        assertions:
-          - violations: no
 
   # Malformed-input fixtures: defensively validate that templates don't crash
   # on missing oldObject, empty annotations, or missing labels.
