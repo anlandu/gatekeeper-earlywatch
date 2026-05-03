@@ -1,18 +1,18 @@
 // watchctl — sign EarlyWatch approvals for Gatekeeper EWApprovalCheck.
 //
-//   watchctl approve-delete \
-//     --key=privkey.pem \
-//     --group="" --version=v1 --resource=services \
-//     --namespace=default --name=web --uid=<uid>
+//	watchctl approve-delete \
+//	  --key=privkey.pem \
+//	  --group="" --version=v1 --resource=services \
+//	  --namespace=default --name=web
 //
-//   watchctl approve-update \
-//     --key=privkey.pem \
-//     --old=old.json --new=new.json
+//	watchctl approve-update \
+//	  --key=privkey.pem \
+//	  --old=old.json --new=new.json
 //
 // Outputs the base64 RSA-PSS signature on stdout. Pipe into the appropriate
 // annotation:
 //
-//   kubectl annotate svc/web "earlywatch.io/approved=$(watchctl approve-delete ...)"
+//	kubectl annotate svc/web "earlywatch.io/approved=$(watchctl approve-delete ...)"
 package main
 
 import (
@@ -32,6 +32,8 @@ import (
 	"strings"
 )
 
+const defaultChangeApprovalAnnotation = "earlywatch.io/change-approved"
+
 func loadKey(path string) (*rsa.PrivateKey, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -48,7 +50,11 @@ func loadKey(path string) (*rsa.PrivateKey, error) {
 	if err != nil {
 		return nil, err
 	}
-	return k.(*rsa.PrivateKey), nil
+	rsaKey, ok := k.(*rsa.PrivateKey)
+	if !ok {
+		return nil, fmt.Errorf("not an RSA private key")
+	}
+	return rsaKey, nil
 }
 
 func signMsg(k *rsa.PrivateKey, msg string) string {
@@ -57,7 +63,67 @@ func signMsg(k *rsa.PrivateKey, msg string) string {
 	return base64.StdEncoding.EncodeToString(sig)
 }
 
-// Mirrors provider's canonicalJSON / mergePatch.
+var serverManagedMetadataFields = []string{
+	"resourceVersion",
+	"generation",
+	"uid",
+	"creationTimestamp",
+	"managedFields",
+	"selfLink",
+}
+
+var topLevelServerManagedFields = []string{
+	"status",
+}
+
+func normalizedMergePatch(oldJSON, newJSON string, stripAnnotations []string) (string, error) {
+	o, err := normalizeForPatch([]byte(oldJSON), stripAnnotations)
+	if err != nil {
+		return "", fmt.Errorf("normalizing old object: %w", err)
+	}
+	n, err := normalizeForPatch([]byte(newJSON), stripAnnotations)
+	if err != nil {
+		return "", fmt.Errorf("normalizing new object: %w", err)
+	}
+	return canonical(diff(o, n)), nil
+}
+
+func normalizeForPatch(raw []byte, stripAnnotations []string) (map[string]any, error) {
+	var obj map[string]any
+	if err := json.Unmarshal(raw, &obj); err != nil {
+		return nil, fmt.Errorf("unmarshalling object: %w", err)
+	}
+
+	for _, field := range topLevelServerManagedFields {
+		delete(obj, field)
+	}
+
+	metadata, _ := obj["metadata"].(map[string]any)
+	if metadata != nil {
+		for _, field := range serverManagedMetadataFields {
+			delete(metadata, field)
+		}
+
+		if annotationsRaw, ok := metadata["annotations"]; ok {
+			if annotationsRaw == nil {
+				delete(metadata, "annotations")
+			} else if annotations, ok := annotationsRaw.(map[string]any); ok {
+				for _, key := range stripAnnotations {
+					delete(annotations, key)
+				}
+				if len(annotations) == 0 {
+					delete(metadata, "annotations")
+				}
+			}
+		}
+
+		obj["metadata"] = metadata
+	}
+
+	return obj, nil
+}
+
+// Mirrors provider's canonicalJSON / diff.
 func canonical(v any) string {
 	switch t := v.(type) {
 	case map[string]any:
@@ -126,6 +192,17 @@ func diff(o, n any) any {
 	return out
 }
 
+func resourcePath(group, version, resource, namespace, name string) string {
+	prefix := version
+	if group != "" {
+		prefix = group + "/" + version
+	}
+	if namespace != "" {
+		return fmt.Sprintf("%s/namespaces/%s/%s/%s", prefix, namespace, resource, name)
+	}
+	return fmt.Sprintf("%s/%s/%s", prefix, resource, name)
+}
+
 func approveDelete(args []string) {
 	fs := flag.NewFlagSet("approve-delete", flag.ExitOnError)
 	keyPath := fs.String("key", "", "PEM private key")
@@ -134,7 +211,6 @@ func approveDelete(args []string) {
 	resource := fs.String("resource", "", "API resource (plural)")
 	namespace := fs.String("namespace", "", "Namespace (empty for cluster-scoped)")
 	name := fs.String("name", "", "Object name")
-	uid := fs.String("uid", "", "Object metadata.uid (binds the signature to this specific object instance)")
 	_ = fs.Parse(args)
 
 	k, err := loadKey(*keyPath)
@@ -142,15 +218,7 @@ func approveDelete(args []string) {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	var msg string
-	if *namespace != "" {
-		msg = fmt.Sprintf("%s/%s/namespaces/%s/%s/%s/%s",
-			*group, *version, *namespace, *resource, *name, *uid)
-	} else {
-		msg = fmt.Sprintf("%s/%s/%s/%s/%s",
-			*group, *version, *resource, *name, *uid)
-	}
-	fmt.Println(signMsg(k, msg))
+	fmt.Println(signMsg(k, resourcePath(*group, *version, *resource, *namespace, *name)))
 }
 
 func approveUpdate(args []string) {
@@ -158,6 +226,7 @@ func approveUpdate(args []string) {
 	keyPath := fs.String("key", "", "PEM private key")
 	oldPath := fs.String("old", "", "old object JSON")
 	newPath := fs.String("new", "", "new object JSON")
+	annotationKey := fs.String("annotation-key", defaultChangeApprovalAnnotation, "Change approval annotation key to strip before signing")
 	_ = fs.Parse(args)
 
 	k, err := loadKey(*keyPath)
@@ -165,12 +234,21 @@ func approveUpdate(args []string) {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	oldB, _ := os.ReadFile(*oldPath)
-	newB, _ := os.ReadFile(*newPath)
-	var o, n any
-	_ = json.Unmarshal(oldB, &o)
-	_ = json.Unmarshal(newB, &n)
-	patch := canonical(diff(o, n))
+	oldB, err := os.ReadFile(*oldPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	newB, err := os.ReadFile(*newPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	patch, err := normalizedMergePatch(string(oldB), string(newB), []string{*annotationKey})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 	fmt.Println(signMsg(k, patch))
 }
 

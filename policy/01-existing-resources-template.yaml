@@ -9,12 +9,14 @@
 #                            matchLabels and matchExpressions:
 #                              {key, operator: In|NotIn|Exists|DoesNotExist, values}
 #
-# Mutually exclusive (EarlyWatch enforces this); if both are given,
-# `labelSelector` takes precedence.
+# Upstream selector precedence is:
+#   1. labelSelectorFromField, when non-empty
+#   2. labelSelector, when present (an empty selector matches everything)
+#   3. no selector, which also matches everything
 #
 # Parameters mirror the EarlyWatch CV spec:
-#   existingResources.apiGroup          (string)
-#   existingResources.version           (string)
+#   existingResources.apiGroup          (string, default "")
+#   existingResources.version           (string, default "v1")
 #   existingResources.kind              (string)
 #   existingResources.labelSelectorFromField
 #   existingResources.labelSelector.matchLabels
@@ -78,40 +80,63 @@ spec:
               import future.keywords.every
               import future.keywords.in
 
-              subject    := input.review.oldObject
-              subject_ns := subject.metadata.namespace
-              params     := input.parameters
-              ops        := params.operations
-              er         := params.existingResources
+              review_object := object.get(input.review, "object", null)
+              review_old_object := object.get(input.review, "oldObject", null)
+
+              # Upstream prefers req.Object.Raw (for UPDATE) and falls back to
+              # req.OldObject.Raw (for DELETE, where Object is empty).
+              subject := review_object {
+                review_object != null
+              } else := review_old_object {
+                review_old_object != null
+              }
+
+              subject_metadata := object.get(subject, "metadata", {})
+              subject_name := object.get(subject_metadata, "name", object.get(input.review, "name", ""))
+              subject_ns := object.get(subject_metadata, "namespace", object.get(input.review, "namespace", ""))
+              subject_kind := object.get(object.get(input.review, "kind", {}), "kind", "")
+
+              params := input.parameters
+              ops    := params.operations
+              er     := params.existingResources
+
+              er_group   := object.get(er, "apiGroup", "")
+              er_version := object.get(er, "version", "v1")
 
               # gv key in data.inventory: "v1" for core, "<group>/<version>" otherwise.
-              gv := er.version              { er.apiGroup == "" }
-              gv := sprintf("%s/%s",
-                    [er.apiGroup, er.version]) { er.apiGroup != "" }
+              gv := er_version { er_group == "" }
+              gv := sprintf("%s/%s", [er_group, er_version]) { er_group != "" }
 
               # ---------- selector resolution ----------
-              # Static selector wins if any matchLabels or matchExpressions are set.
+              # labelSelectorFromField wins over a static labelSelector when
+              # both are configured. A present-but-empty static selector and no
+              # selector both mirror labels.Everything().
+              has_field_selector {
+                object.get(er, "labelSelectorFromField", "") != ""
+              }
+
               has_static_selector {
-                count(object.get(er, ["labelSelector", "matchLabels"], {})) > 0
-              }
-              has_static_selector {
-                count(object.get(er, ["labelSelector", "matchExpressions"], [])) > 0
+                object.get(er, "labelSelector", null) != null
               }
 
-              is_string_part(p) { is_string(p) }
+              missing_field_sentinel := {"__earlywatch_missing_selector_field__": true}
 
-              # field-derived selector (dot-path)
-              field_selector := value {
-                not has_static_selector
-                path_parts := split(er.labelSelectorFromField, ".")
-                some path, value
-                walk(subject, [path, value])
-                string_path := [p | p := path[_]; is_string_part(p)]
-                string_path == path_parts
+              # field-derived selector (dot-path into the subject object)
+              field_selector := fs {
+                has_field_selector
+                field := object.get(er, "labelSelectorFromField", "")
+                fs := object.get(subject, split(field, "."), missing_field_sentinel)
+                fs != missing_field_sentinel
+                is_object(fs)
               }
 
-              # ---------- label match (handles both forms) ----------
+              # ---------- label match (handles all selector modes) ----------
               labels_match(labels) {
+                has_field_selector
+                every k, v in field_selector { labels[k] == v }
+              }
+              labels_match(labels) {
+                not has_field_selector
                 has_static_selector
                 ml := object.get(er, ["labelSelector", "matchLabels"], {})
                 every k, v in ml { labels[k] == v }
@@ -119,9 +144,8 @@ spec:
                 every expr in mx { match_expression(labels, expr) }
               }
               labels_match(labels) {
+                not has_field_selector
                 not has_static_selector
-                count(field_selector) > 0
-                every k, v in field_selector { labels[k] == v }
               }
 
               match_expression(labels, e) { e.operator == "In";    some i; labels[e.key] == e.values[i] }
@@ -132,17 +156,25 @@ spec:
               value_in_list(v, list) { some i; list[i] == v }
 
               # ---------- inventory iteration ----------
-              # Upstream EarlyWatch defaults SameNamespace to true when omitted
-              # (pkg/webhook/admission.go:367 — `nil || *p`). Mirror that here so
-              # partial configs don't silently broaden the search to all namespaces.
+              # Upstream EarlyWatch defaults SameNamespace to true when omitted.
+              # For DELETE of a Namespace, the admission namespace is empty but
+              # the subject name is the namespace being deleted; mirror upstream
+              # by searching inside that namespace.
               same_ns := object.get(er, "sameNamespace", true)
 
-              ns_scope := subject_ns { same_ns == true }
-              ns_scope := other_ns   { same_ns == false; some other_ns; data.inventory.namespace[other_ns] }
+              effective_subject_ns := subject_ns {
+                subject_ns != ""
+              } else := subject_name {
+                lower(subject_kind) == "namespace"
+              } else := ""
+
+              ns_scope := effective_subject_ns { same_ns == true }
+              ns_scope := other_ns            { same_ns == false; some other_ns; data.inventory.namespace[other_ns] }
 
               existing_match[name] {
                 obj := data.inventory.namespace[ns_scope][gv][er.kind][name]
-                labels_match(obj.metadata.labels)
+                labels := object.get(object.get(obj, "metadata", {}), "labels", {})
+                labels_match(labels)
               }
 
               violation[{"msg": msg}] {
@@ -151,8 +183,8 @@ spec:
                 existing_match[n]
                 msg := sprintf("%s %q in %q cannot be %sd: dependent %s/%s %q still exists",
                   [input.review.kind.kind,
-                   subject.metadata.name,
-                   subject_ns,
+                   subject_name,
+                   effective_subject_ns,
                    lower(input.review.operation),
                    er.kind, gv, n])
               }

@@ -27,24 +27,73 @@ spec:
     - name: v1alpha1
       served: true
       storage: true
+      additionalPrinterColumns:
+        - name: User
+          type: string
+          jsonPath: .spec.user
+        - name: Operation
+          type: string
+          jsonPath: .spec.operation
+        - name: Resource
+          type: string
+          jsonPath: .spec.resource
+        - name: ResourceName
+          type: string
+          jsonPath: .spec.resourceName
+        - name: Namespace
+          type: string
+          jsonPath: .spec.resourceNamespace
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
       schema:
         openAPIV3Schema:
           type: object
           properties:
+            apiVersion:
+              type: string
+            kind:
+              type: string
+            metadata:
+              type: object
             spec:
               type: object
+              required:
+                - timestamp
+                - user
+                - userAgent
+                - operation
+                - resource
+                - resourceName
+                - auditID
+                - monitorName
+                - monitorNamespace
               properties:
-                timestamp: {type: string}
-                user:      {type: string}
-                operation: {type: string}
+                timestamp:
+                  type: string
+                  format: date-time
+                user:
+                  type: string
+                userAgent:
+                  type: string
+                operation:
+                  type: string
+                apiGroup:
+                  type: string
                 resource:
-                  type: object
-                  properties:
-                    apiGroup:  {type: string}
-                    version:   {type: string}
-                    kind:      {type: string}
-                    namespace: {type: string}
-                    name:      {type: string}
+                  type: string
+                resourceName:
+                  type: string
+                resourceNamespace:
+                  type: string
+                sourceIP:
+                  type: string
+                auditID:
+                  type: string
+                monitorName:
+                  type: string
+                monitorNamespace:
+                  type: string
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -110,7 +159,38 @@ spec:
                     --field-selector reason=Updated \
                     | jq -r --arg now "$NOW" '
                       .items[]
-                      | "{\"apiVersion\":\"earlywatch.io/v1alpha1\",\"kind\":\"ManualTouchEvent\",\"metadata\":{\"name\":\"\(.metadata.uid)\",\"namespace\":\"" + env.NS + "\"},\"spec\":{\"timestamp\":\"\($now)\",\"user\":(.reportingComponent // \"unknown\"),\"operation\":\"UPDATE\",\"resource\":{\"namespace\":(.involvedObject.namespace // \"\"),\"name\":(.involvedObject.name // \"\"),\"kind\":(.involvedObject.kind // \"\")}}}"' \
+                      | (.involvedObject.namespace // "") as $rns
+                      | (.involvedObject.name // "") as $rname
+                      | (.involvedObject.kind // "") as $kind
+                      | ($kind | ascii_downcase + "s") as $resource
+                      | {
+                          apiVersion: "earlywatch.io/v1alpha1",
+                          kind: "ManualTouchEvent",
+                          metadata: {
+                            name: .metadata.uid,
+                            namespace: env.NS,
+                            labels: {
+                              "earlywatch.io/resource": $resource,
+                              "earlywatch.io/resource-namespace": $rns,
+                              "earlywatch.io/resource-name": $rname,
+                              "earlywatch.io/api-group": "",
+                              "earlywatch.io/operation": "UPDATE"
+                            }
+                          },
+                          spec: {
+                            timestamp: $now,
+                            user: (.reportingComponent // "unknown"),
+                            userAgent: "kubernetes-event",
+                            operation: "UPDATE",
+                            apiGroup: "",
+                            resource: $resource,
+                            resourceName: $rname,
+                            resourceNamespace: $rns,
+                            auditID: .metadata.uid,
+                            monitorName: "manual-touch-monitor",
+                            monitorNamespace: "gatekeeper-system"
+                          }
+                        } | @json' \
                     | while read -r line; do
                         echo "$line" | kubectl apply -f - || true
                       done

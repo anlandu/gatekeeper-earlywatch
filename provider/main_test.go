@@ -38,10 +38,8 @@ func sign(t *testing.T, priv *rsa.PrivateKey, msg string) string {
 
 func TestDeleteValid(t *testing.T) {
 	priv, pub := mustKey(t)
-	path := "/v1/namespaces/default/services/web"
+	path := "v1/namespaces/default/services/web"
 	sig := sign(t, priv, path)
-	pubOneLine := strings.ReplaceAll(pub, "\n", "\\n")
-	_ = pubOneLine
 	key := strings.Join([]string{"delete", pub, path, sig}, "|")
 	if got := evaluate(key); got != "valid" {
 		t.Fatalf("want valid, got %q", got)
@@ -55,6 +53,17 @@ func TestDeleteTampered(t *testing.T) {
 	if got := evaluate(key); got == "valid" {
 		t.Fatal("want failure, got valid")
 	}
+}
+
+func updateKey(pub, annotationKey, oldJSON, newJSON, sig string) string {
+	return strings.Join([]string{
+		"update",
+		pub,
+		annotationKey,
+		base64.StdEncoding.EncodeToString([]byte(oldJSON)),
+		base64.StdEncoding.EncodeToString([]byte(newJSON)),
+		sig,
+	}, "|")
 }
 
 func TestUpdateValid(t *testing.T) {
@@ -81,6 +90,81 @@ func TestUpdateUnsignedSpecChange(t *testing.T) {
 	key := strings.Join([]string{"update", pub, oldJSON, newJSON, sig}, "|")
 	if got := evaluate(key); got == "valid" {
 		t.Fatal("want failure for mismatched signature")
+	}
+}
+
+func TestUpdateNormalizationIgnoresStatusAndManagedMetadata(t *testing.T) {
+	priv, pub := mustKey(t)
+	oldJSON := `{"metadata":{"name":"x","resourceVersion":"1","generation":1,"uid":"old","creationTimestamp":"2024-01-01T00:00:00Z","managedFields":[{"manager":"a"}],"selfLink":"/api/v1/x"},"spec":{"replicas":1},"status":{"readyReplicas":1}}`
+	newJSON := `{"metadata":{"name":"x","resourceVersion":"2","generation":2,"uid":"new","creationTimestamp":"2024-01-02T00:00:00Z","managedFields":[{"manager":"b"}],"selfLink":"/api/v1/y"},"spec":{"replicas":1},"status":{"readyReplicas":0}}`
+	patch, err := normalizedMergePatch(oldJSON, newJSON, []string{defaultChangeApprovalAnnotation})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if patch != `{}` {
+		t.Fatalf("want empty patch, got %s", patch)
+	}
+	sig := sign(t, priv, patch)
+	if got := evaluate(updateKey(pub, defaultChangeApprovalAnnotation, oldJSON, newJSON, sig)); got != "valid" {
+		t.Fatalf("want valid, got %q", got)
+	}
+}
+
+func TestUpdateNormalizationStripsChangeAnnotationAndDropsEmptyAnnotations(t *testing.T) {
+	priv, pub := mustKey(t)
+	oldJSON := `{"metadata":{"name":"x","annotations":{"earlywatch.io/change-approved":"old"}},"spec":{"replicas":1}}`
+	newJSON := `{"metadata":{"name":"x","annotations":{"earlywatch.io/change-approved":"new"}},"spec":{"replicas":3}}`
+	patch, err := normalizedMergePatch(oldJSON, newJSON, []string{defaultChangeApprovalAnnotation})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if patch != `{"spec":{"replicas":3}}` {
+		t.Fatalf("want spec-only patch, got %s", patch)
+	}
+	sig := sign(t, priv, patch)
+	if got := evaluate(updateKey(pub, defaultChangeApprovalAnnotation, oldJSON, newJSON, sig)); got != "valid" {
+		t.Fatalf("want valid, got %q", got)
+	}
+}
+
+func TestUpdateNormalizationDropsNullAnnotations(t *testing.T) {
+	oldJSON := `{"metadata":{"name":"x","annotations":null},"spec":{"replicas":1}}`
+	newJSON := `{"metadata":{"name":"x"},"spec":{"replicas":1}}`
+	patch, err := normalizedMergePatch(oldJSON, newJSON, []string{defaultChangeApprovalAnnotation})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if patch != `{}` {
+		t.Fatalf("want empty patch, got %s", patch)
+	}
+}
+
+func TestUpdateBase64KeyAllowsPipeInJSON(t *testing.T) {
+	priv, pub := mustKey(t)
+	oldJSON := `{"metadata":{"name":"x"},"data":{"k":"a|b"}}`
+	newJSON := `{"metadata":{"name":"x"},"data":{"k":"c|d"}}`
+	patch, err := normalizedMergePatch(oldJSON, newJSON, []string{defaultChangeApprovalAnnotation})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sig := sign(t, priv, patch)
+	if got := evaluate(updateKey(pub, defaultChangeApprovalAnnotation, oldJSON, newJSON, sig)); got != "valid" {
+		t.Fatalf("want valid, got %q", got)
+	}
+}
+
+func TestUpdateTamperedMeaningfulChangeFails(t *testing.T) {
+	priv, pub := mustKey(t)
+	oldJSON := `{"metadata":{"name":"x"},"data":{"k":"old"}}`
+	signedNewJSON := `{"metadata":{"name":"x"},"data":{"k":"signed"}}`
+	tamperedNewJSON := `{"metadata":{"name":"x"},"data":{"k":"tampered"}}`
+	patch, err := normalizedMergePatch(oldJSON, signedNewJSON, []string{defaultChangeApprovalAnnotation})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sig := sign(t, priv, patch)
+	if got := evaluate(updateKey(pub, defaultChangeApprovalAnnotation, oldJSON, tamperedNewJSON, sig)); got == "valid" {
+		t.Fatal("want failure for tampered meaningful change")
 	}
 }
 

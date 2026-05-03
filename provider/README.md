@@ -13,7 +13,7 @@ parses the opcode prefix and dispatches:
 | Opcode  | Fields (joined by `|`)                                  | Verifies signature over            |
 |---------|---------------------------------------------------------|------------------------------------|
 | delete  | `<pem-pubkey>|<canonical-path>|<base64-sig>`            | the canonical-path string          |
-| update  | `<pem-pubkey>|<old-json>|<new-json>|<base64-sig>`       | RFC 7396 merge-patch(old → new)    |
+| update  | `<pem-pubkey>|<change-annotation-key>|<base64-old-json>|<base64-new-json>|<base64-sig>` | upstream-normalized RFC 7396 merge-patch(old → new) |
 
 For each key the response contains `["<key>", "valid"]` on success or
 `["<key>", "<reason>"]` on failure — the constraint denies on anything
@@ -22,9 +22,12 @@ other than `"valid"`.
 ## Deploy
 
 ```bash
-# 1. Build & push the image
-docker build -t ghcr.io/your-org/earlywatch-approval-verifier:latest .
-docker push  ghcr.io/your-org/earlywatch-approval-verifier:latest
+# 1. Build and publish or load the image used by manifests/deployment.yaml.
+#    For local kind testing, for example:
+docker build -t docker.io/sozercan/keymaster-approval-verifier:parity .
+kind load docker-image docker.io/sozercan/keymaster-approval-verifier:parity
+#    Then patch manifests/deployment.yaml to use that image, or retag to the
+#    image already referenced there.
 
 # 2. Generate certs and create the TLS secret
 ./manifests/gen-certs.sh ./certs
@@ -50,21 +53,16 @@ go test ./...
 go run . --insecure --addr=:8080   # plain HTTP for local curl
 ```
 
-## CRD parity (optional)
+## EarlyWatch parity notes
 
-The provider as shipped takes the public key inline via the constraint
-parameter, so it does not require any EarlyWatch CRDs.
+The provider mirrors upstream EarlyWatch's annotation-based ApprovalCheck flow:
 
-If you want full parity with EarlyWatch's `ChangeApproval` CR-based flow
-(approvals stored as cluster resources rather than annotations), extend the
-provider to:
+- DELETE verifies an `earlywatch.io/approved` signature over the canonical
+  `ResourcePath`.
+- UPDATE verifies an `earlywatch.io/change-approved` signature over the
+  normalized merge patch between old and new objects.
 
-1. Add a Kubernetes client (`client-go`).
-2. On request, look up `ChangeApproval` CRs by name/owner and read the
-   stored signature.
-3. Optionally read the policy from a `ChangeValidator` CR (signing key,
-   N-of-M approvers) instead of trusting the constraint parameters.
-
-That widens the RBAC surface (`get`/`list` on `changeapprovals`,
-`changevalidators`) but keeps the operator UX identical to upstream
-EarlyWatch.
+The public key is still supplied by the Gatekeeper `EWApprovalCheck`
+constraint (or constrained further with `--trusted-keys-dir`), because this
+project intentionally maps EarlyWatch behavior onto Gatekeeper-native
+constraints rather than requiring upstream `ChangeValidator` CRs.

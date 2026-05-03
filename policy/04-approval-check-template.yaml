@@ -6,23 +6,17 @@
 #   publicKey             - PEM RSA public key (passed through to verifier)
 #
 # DELETE: verifier signs the canonical resource path:
-#     <group>/<version>/namespaces/<ns>/<resource>/<name>   (namespaced)
-#     <group>/<version>/<resource>/<name>                   (cluster-scoped)
+#     v1/namespaces/<ns>/<resource>/<name>                  (core namespaced)
+#     v1/<resource>/<name>                                  (core cluster-scoped)
+#     <group>/<version>/namespaces/<ns>/<resource>/<name>   (group namespaced)
+#     <group>/<version>/<resource>/<name>                   (group cluster-scoped)
 # UPDATE: verifier signs the JSON merge-patch (RFC 7396) between old and new,
 #         with managed metadata fields and the change-approval annotation
 #         itself stripped before signing.
 #
 # Pure Rego cannot do RSA-PSS verification or canonical JSON merge-patch
-# computation; both are delegated to a sidecar Provider you must deploy.
-apiVersion: externaldata.gatekeeper.sh/v1beta1
-kind: Provider
-metadata:
-  name: approval-verifier
-spec:
-  url: https://approval-verifier.gatekeeper-system.svc:8443/validate
-  timeout: 3
-  caBundle: REPLACE_WITH_BASE64_CA_BUNDLE
----
+# computation; both are delegated to the external-data Provider defined in
+# ../provider/manifests/provider.yaml.
 apiVersion: templates.gatekeeper.sh/v1
 kind: ConstraintTemplate
 metadata:
@@ -58,42 +52,46 @@ spec:
                 k != ""
               } else := "earlywatch.io/change-approved"
 
+              provider_name := p {
+                p := input.parameters.provider
+                p != ""
+              } else := "approval-verifier"
+
+              request_group := object.get(input.review.kind, "group", "")
+              request_version := object.get(input.review.kind, "version", "v1")
+              request_resource := input.review.resource.resource
+              request_namespace := object.get(input.review, "namespace", "")
+              request_name := input.review.name
+
+              resource_prefix := p {
+                request_group == ""
+                p := request_version
+              } else := p {
+                p := sprintf("%s/%s", [request_group, request_version])
+              }
+
               # ---------- DELETE ----------
               del_sig := input.review.oldObject.metadata.annotations[del_key]
 
-              # The signed canonical path includes metadata.uid so a captured
-              # signature cannot be replayed against a recreated namesake.
-              uid := object.get(input.review.oldObject.metadata, "uid", "")
+              canonical_path := p {
+                request_namespace != ""
+                p := sprintf("%s/namespaces/%s/%s/%s",
+                  [resource_prefix, request_namespace, request_resource, request_name])
+              } else := p {
+                p := sprintf("%s/%s/%s",
+                  [resource_prefix, request_resource, request_name])
+              }
 
-              canonical_path :=
-                sprintf("%s/%s/namespaces/%s/%s/%s/%s",
-                  [input.review.kind.group,
-                   input.review.kind.version,
-                   input.review.oldObject.metadata.namespace,
-                   input.review.resource.resource,
-                   input.review.oldObject.metadata.name,
-                   uid])
-                { input.review.oldObject.metadata.namespace }
-              canonical_path :=
-                sprintf("%s/%s/%s/%s/%s",
-                  [input.review.kind.group,
-                   input.review.kind.version,
-                   input.review.resource.resource,
-                   input.review.oldObject.metadata.name,
-                   uid])
-                { not input.review.oldObject.metadata.namespace }
+              delete_key := sprintf("delete|%s|%s|%s",
+                [input.parameters.publicKey, canonical_path, del_sig])
 
-              # Optional notAfter annotation gives operators short-lived approvals.
-              # Format: RFC3339 timestamp string. Absent = no expiry.
-              not_after_key := "earlywatch.io/approval-not-after"
-              not_after_str := input.review.oldObject.metadata.annotations[not_after_key]
-
-              violation[{"msg": msg}] {
+              delete_response := response {
                 input.review.operation == "DELETE"
-                not_after_str
-                expiry_ns := time.parse_rfc3339_ns(not_after_str)
-                time.now_ns() > expiry_ns
-                msg := sprintf("delete approval expired at %v", [not_after_str])
+                del_sig
+                response := external_data({
+                  "provider": provider_name,
+                  "keys": [delete_key],
+                })
               }
 
               violation[{"msg": msg}] {
@@ -102,35 +100,32 @@ spec:
                 msg := sprintf("missing delete-approval annotation %q", [del_key])
               }
               violation[{"msg": msg}] {
-                input.review.operation == "DELETE"
-                del_sig
-                response := external_data({
-                  "provider": input.parameters.provider,
-                  "keys": [sprintf("delete|%s|%s|%s",
-                    [input.parameters.publicKey, canonical_path, del_sig])],
-                })
+                response := delete_response
                 some i
                 response.responses[i][1] != "valid"
                 msg := sprintf("delete approval rejected: %v", [response.responses[i][1]])
               }
 
               # ---------- UPDATE ----------
-              # Upstream EarlyWatch (pkg/webhook/admission.go:832) reads the change-
-              # approval annotation off the *new* object. The user submits the change
-              # together with the signature, so it lives on input.review.object.
+              # Upstream EarlyWatch reads the change-approval annotation off the
+              # *new* object. The provider receives raw old/new JSON and performs
+              # upstream-equivalent normalization before computing the signed patch.
               upd_sig := input.review.object.metadata.annotations[upd_key]
 
-              # Strip server-managed fields + change-approval annotation before sending
-              # the {old, new} pair to the verifier (which computes the merge-patch).
-              sanitize(obj) := o {
-                md := object.get(obj, "metadata", {})
-                md1 := object.remove(md,
-                        {"resourceVersion","generation","uid",
-                         "creationTimestamp","managedFields","selfLink"})
-                ann := object.get(md1, "annotations", {})
-                md2 := object.union(md1,
-                        {"annotations": object.remove(ann, {upd_key})})
-                o := object.union(obj, {"metadata": md2})
+              update_key := sprintf("update|%s|%s|%s|%s|%s",
+                [input.parameters.publicKey,
+                 upd_key,
+                 base64.encode(json.marshal(input.review.oldObject)),
+                 base64.encode(json.marshal(input.review.object)),
+                 upd_sig])
+
+              update_response := response {
+                input.review.operation == "UPDATE"
+                upd_sig
+                response := external_data({
+                  "provider": provider_name,
+                  "keys": [update_key],
+                })
               }
 
               violation[{"msg": msg}] {
@@ -139,16 +134,7 @@ spec:
                 msg := sprintf("missing change-approval annotation %q", [upd_key])
               }
               violation[{"msg": msg}] {
-                input.review.operation == "UPDATE"
-                upd_sig
-                response := external_data({
-                  "provider": input.parameters.provider,
-                  "keys": [sprintf("update|%s|%s|%s|%s",
-                    [input.parameters.publicKey,
-                     json.marshal(sanitize(input.review.oldObject)),
-                     json.marshal(sanitize(input.review.object)),
-                     upd_sig])],
-                })
+                response := update_response
                 some i
                 response.responses[i][1] != "valid"
                 msg := sprintf("change approval rejected: %v", [response.responses[i][1]])
@@ -159,77 +145,32 @@ spec:
               # or no responses at all (provider unreachable, timeout, malformed
               # reply), deny rather than fail open. Approval is security-critical.
               violation[{"msg": msg}] {
-                input.review.operation == "DELETE"
-                del_sig
-                response := external_data({
-                  "provider": input.parameters.provider,
-                  "keys": [sprintf("delete|%s|%s|%s",
-                    [input.parameters.publicKey, canonical_path, del_sig])],
-                })
-                response.system_error != ""
+                response := delete_response
+                object.get(response, "system_error", "") != ""
                 msg := sprintf("approval verifier system error: %v", [response.system_error])
               }
               violation[{"msg": msg}] {
-                input.review.operation == "UPDATE"
-                upd_sig
-                response := external_data({
-                  "provider": input.parameters.provider,
-                  "keys": [sprintf("update|%s|%s|%s|%s",
-                    [input.parameters.publicKey,
-                     json.marshal(sanitize(input.review.oldObject)),
-                     json.marshal(sanitize(input.review.object)),
-                     upd_sig])],
-                })
-                response.system_error != ""
+                response := update_response
+                object.get(response, "system_error", "") != ""
                 msg := sprintf("approval verifier system error: %v", [response.system_error])
               }
               violation[{"msg": msg}] {
-                input.review.operation == "DELETE"
-                del_sig
-                response := external_data({
-                  "provider": input.parameters.provider,
-                  "keys": [sprintf("delete|%s|%s|%s",
-                    [input.parameters.publicKey, canonical_path, del_sig])],
-                })
-                count(response.errors) > 0
+                response := delete_response
+                count(object.get(response, "errors", [])) > 0
                 msg := sprintf("approval verifier returned errors: %v", [response.errors])
               }
               violation[{"msg": msg}] {
-                input.review.operation == "UPDATE"
-                upd_sig
-                response := external_data({
-                  "provider": input.parameters.provider,
-                  "keys": [sprintf("update|%s|%s|%s|%s",
-                    [input.parameters.publicKey,
-                     json.marshal(sanitize(input.review.oldObject)),
-                     json.marshal(sanitize(input.review.object)),
-                     upd_sig])],
-                })
-                count(response.errors) > 0
+                response := update_response
+                count(object.get(response, "errors", [])) > 0
                 msg := sprintf("approval verifier returned errors: %v", [response.errors])
               }
               violation[{"msg": msg}] {
-                input.review.operation == "DELETE"
-                del_sig
-                response := external_data({
-                  "provider": input.parameters.provider,
-                  "keys": [sprintf("delete|%s|%s|%s",
-                    [input.parameters.publicKey, canonical_path, del_sig])],
-                })
-                count(response.responses) == 0
+                response := delete_response
+                count(object.get(response, "responses", [])) == 0
                 msg := "approval verifier returned no responses (fail closed)"
               }
               violation[{"msg": msg}] {
-                input.review.operation == "UPDATE"
-                upd_sig
-                response := external_data({
-                  "provider": input.parameters.provider,
-                  "keys": [sprintf("update|%s|%s|%s|%s",
-                    [input.parameters.publicKey,
-                     json.marshal(sanitize(input.review.oldObject)),
-                     json.marshal(sanitize(input.review.object)),
-                     upd_sig])],
-                })
-                count(response.responses) == 0
+                response := update_response
+                count(object.get(response, "responses", [])) == 0
                 msg := "approval verifier returned no responses (fail closed)"
               }

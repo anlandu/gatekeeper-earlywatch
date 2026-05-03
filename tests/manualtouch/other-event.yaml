@@ -1,0 +1,23 @@
+apiVersion: earlywatch.io/v1alpha1
+kind: ManualTouchEvent
+metadata:
+  name: recent-other
+  namespace: early-watch-system
+  labels:
+    earlywatch.io/resource: deployments
+    earlywatch.io/resource-namespace: default
+    earlywatch.io/resource-name: other
+    earlywatch.io/api-group: apps
+    earlywatch.io/operation: UPDATE
+spec:
+  timestamp: "2099-01-01T00:00:00Z"
+  user: alice
+  userAgent: kubectl/v1.29.0
+  operation: UPDATE
+  apiGroup: apps
+  resource: deployments
+  resourceName: other
+  resourceNamespace: default
+  auditID: audit-3
+  monitorName: monitor
+  monitorNamespace: default

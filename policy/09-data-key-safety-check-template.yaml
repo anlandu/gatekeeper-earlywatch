@@ -1,8 +1,8 @@
 # EarlyWatch DataKeySafetyCheck -> Gatekeeper referential constraint
 #
-# Denies UPDATEs to ConfigMaps/Secrets that drop a data key while another
-# resource still references that exact (name, key) pair via configMapKeyRef
-# / secretKeyRef-style fields.
+# Denies UPDATEs to ConfigMaps/Secrets that drop a data or binaryData key while
+# another resource still references that exact (name, key) pair via
+# configMapKeyRef / secretKeyRef-style fields.
 #
 # Parameters mirror the EarlyWatch CV spec:
 #   sameNamespace: bool
@@ -63,8 +63,17 @@ spec:
               target_name := input.review.object.metadata.name
               target_ns   := input.review.object.metadata.namespace
 
-              old_keys := { k | input.review.oldObject.data[k] }
-              new_keys := { k | input.review.object.data[k] }
+              object_keys(obj, field) := { k |
+                object.get(obj, field, {})[k]
+              }
+
+              data_keys(obj) := { k |
+                some field in ["data", "binaryData"]
+                object_keys(obj, field)[k]
+              }
+
+              old_keys := data_keys(input.review.oldObject)
+              new_keys := data_keys(input.review.object)
               removed_keys := old_keys - new_keys
 
               gv_for(r) := r.version              { r.apiGroup == "" }

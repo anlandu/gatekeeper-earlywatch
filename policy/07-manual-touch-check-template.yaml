@@ -5,6 +5,7 @@
 # AND that we sync ManualTouchEvent into data.inventory.
 #
 # Parameters mirror EarlyWatch's CV spec:
+#   operations      admission ops this check applies to (e.g. ["UPDATE"])
 #   windowDuration  Go duration string ("2h"); default "1h"
 #   eventNamespace  CR namespace; default "early-watch-system"
 apiVersion: templates.gatekeeper.sh/v1
@@ -23,6 +24,9 @@ spec:
         openAPIV3Schema:
           type: object
           properties:
+            operations:
+              type: array
+              items: {type: string}
             windowDuration: {type: string}
             eventNamespace: {type: string}
   targets:
@@ -48,22 +52,51 @@ spec:
               window_ns := time.parse_duration_ns(window_dur)
               now_ns    := time.now_ns()
 
-              target_kind := input.review.kind.kind
-              target_name := input.review.oldObject.metadata.name
-              target_ns   := input.review.oldObject.metadata.namespace
+              ops := object.get(params, "operations", [])
 
-              # ManualTouchEvent shape (per EarlyWatch v1alpha1):
-              #   spec.target.{kind, namespace, name}
-              #   spec.timestamp  (RFC3339)
+              # In EarlyWatch, the surrounding ChangeValidator's operations list
+              # determines when the rule runs. Gatekeeper has no operation matcher,
+              # so mirror that guard-level behavior with a parameter.
+              operation_applies { ops[_] == input.review.operation }
+
+              target_kind := object.get(object.get(input.review, "kind", {}), "kind", "")
+              target_resource := r {
+                r := object.get(object.get(input.review, "resource", {}), "resource", "")
+                r != ""
+              } else := lower(sprintf("%ss", [target_kind]))
+              target_api_group := object.get(object.get(input.review, "kind", {}), "group", "")
+              target_name := n {
+                n := object.get(input.review, "name", "")
+                n != ""
+              } else := object.get(object.get(input.review, "oldObject", {}), ["metadata", "name"], object.get(object.get(input.review, "object", {}), ["metadata", "name"], ""))
+              target_ns := n {
+                n := object.get(input.review, "namespace", "")
+                n != ""
+              } else := object.get(object.get(input.review, "oldObject", {}), ["metadata", "namespace"], object.get(object.get(input.review, "object", {}), ["metadata", "namespace"], ""))
+
+              # EarlyWatch audit-monitor records ManualTouchEvent with labels:
+              #   earlywatch.io/resource            = plural resource
+              #   earlywatch.io/resource-namespace  = namespace (possibly empty)
+              #   earlywatch.io/resource-name       = object name
+              #   earlywatch.io/api-group           = api group (possibly empty)
+              # and spec.timestamp as RFC3339. The upstream webhook lists events
+              # by exactly these labels, then denies if any timestamp is inside
+              # the configured window.
+              event_matches_target(ev) {
+                labels := object.get(object.get(ev, "metadata", {}), "labels", {})
+                object.get(labels, "earlywatch.io/resource", "") == target_resource
+                object.get(labels, "earlywatch.io/resource-namespace", "") == target_ns
+                object.get(labels, "earlywatch.io/resource-name", "") == target_name
+                object.get(labels, "earlywatch.io/api-group", "") == target_api_group
+              }
+
               violation[{"msg": msg}] {
-                input.review.operation == "UPDATE"
+                operation_applies
                 some name
                 ev := data.inventory.namespace[event_ns]["earlywatch.io/v1alpha1"]["ManualTouchEvent"][name]
-                ev.spec.target.kind      == target_kind
-                ev.spec.target.namespace == target_ns
-                ev.spec.target.name      == target_name
+                event_matches_target(ev)
                 touch_ns := time.parse_rfc3339_ns(ev.spec.timestamp)
                 now_ns - touch_ns < window_ns
-                msg := sprintf("%s %q was manually touched within %s; update denied",
-                  [target_kind, target_name, window_dur])
+                msg := sprintf("%s %q was manually touched within %s; %s denied",
+                  [target_kind, target_name, window_dur, lower(input.review.operation)])
               }
