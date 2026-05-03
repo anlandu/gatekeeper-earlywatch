@@ -60,8 +60,13 @@ spec:
               target_ns   := input.review.oldObject.metadata.namespace
               params      := input.parameters
 
-              gv_for(r) := r.version { r.apiGroup == "" }
-              gv_for(r) := sprintf("%s/%s", [r.apiGroup, r.version]) { r.apiGroup != "" }
+              resource_version(r) := v {
+                v := object.get(r, "version", "v1")
+                v != ""
+              } else := "v1"
+
+              gv_for(r) := resource_version(r) { r.apiGroup == "" }
+              gv_for(r) := sprintf("%s/%s", [r.apiGroup, resource_version(r)]) { r.apiGroup != "" }
 
               is_string_part(p) { is_string(p) }
 
@@ -80,13 +85,17 @@ spec:
                 # Default sameNamespace -> true to match upstream EarlyWatch
                 # (pkg/webhook/admission.go:412).
                 object.get(params, "sameNamespace", true) == true
-                objs := { name: o |
+                objs := { {"namespace": target_ns, "name": name, "object": o} |
                   o := data.inventory.namespace[target_ns][gv_for(r)][r.kind][name]
                 }
               }
               referrer_objects(r) := objs {
                 object.get(params, "sameNamespace", true) == false
-                objs := { name: o |
+                # Use a set of referrer records instead of an object keyed only
+                # by name. Cross-namespace scans can legitimately contain the
+                # same referrer name in multiple namespaces; object
+                # comprehensions would then raise eval_conflict_error.
+                objs := { {"namespace": ns, "name": name, "object": o} |
                   some ns
                   o := data.inventory.namespace[ns][gv_for(r)][r.kind][name]
                 }
@@ -95,13 +104,13 @@ spec:
               offender[{"kind": kind, "name": ref_name}] {
                 some i
                 r := params.resources[i]
-                objs := referrer_objects(r)
-                some ref_name
-                o := objs[ref_name]
+                ref := referrer_objects(r)[_]
+                o := ref.object
                 some j
                 field := r.nameFields[j]
                 target_name == value_at(o, field)[_]
                 kind := r.kind
+                ref_name := ref.name
               }
 
               violation[{"msg": msg}] {

@@ -1,8 +1,8 @@
 ---
 apiVersion: constraints.gatekeeper.sh/v1beta1
-kind: EWExpressionCheckCELProdDelete
+kind: EWExpressionCheckCELProtectedDelete
 metadata:
-  name: block-delete-in-production-namespace-cel-real
+  name: block-delete-of-earlywatch-protected-object
 spec:
   match:
     kinds:

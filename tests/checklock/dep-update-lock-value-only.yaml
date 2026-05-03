@@ -14,8 +14,10 @@ request:
     metadata:
       name: web
       namespace: default
+      labels:
+        app: web
       annotations:
-        earlywatch.io/lock: "true"
+        earlywatch.io/lock: "ticket-123"
     spec:
       replicas: 2
   object:
@@ -24,7 +26,9 @@ request:
     metadata:
       name: web
       namespace: default
+      labels:
+        app: web
       annotations:
-        earlywatch.io/lock: "true"
+        earlywatch.io/lock: "ticket-456"
     spec:
-      replicas: 3
+      replicas: 2

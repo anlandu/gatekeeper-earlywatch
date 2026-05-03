@@ -55,6 +55,20 @@ func TestDeleteTampered(t *testing.T) {
 	}
 }
 
+func TestPKCS1PublicKeyRejectedForUpstreamParity(t *testing.T) {
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "RSA PUBLIC KEY", Bytes: x509.MarshalPKCS1PublicKey(&priv.PublicKey)})
+	path := "v1/namespaces/default/services/web"
+	sig := sign(t, priv, path)
+	key := strings.Join([]string{"delete", string(pemBytes), path, sig}, "|")
+	if got := evaluate(key); got == "valid" {
+		t.Fatal("want PKCS#1 public key to be rejected for upstream parity, got valid")
+	}
+}
+
 func updateKey(pub, annotationKey, oldJSON, newJSON, sig string) string {
 	return strings.Join([]string{
 		"update",

@@ -1,0 +1,18 @@
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: EWNameReferenceCheck
+metadata:
+  name: configmap-not-referenced-default-version
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["ConfigMap"]
+  parameters:
+    sameNamespace: true
+    operations: ["DELETE"]
+    resources:
+      - apiGroup: apps
+        kind: Deployment
+        nameFields:
+          - spec.template.spec.volumes.configMap.name
+          - spec.template.spec.containers.envFrom.configMapRef.name

@@ -88,19 +88,15 @@ func parsePublicKey(pemStr string) (*rsa.PublicKey, error) {
 	}
 	block, _ := pem.Decode([]byte(pemStr))
 	if block == nil {
-		return nil, fmt.Errorf("invalid PEM")
+		return nil, fmt.Errorf("no PEM block found in public key data")
 	}
 	pub, err := x509.ParsePKIXPublicKey(block.Bytes)
 	if err != nil {
-		if rsaPub, err2 := x509.ParsePKCS1PublicKey(block.Bytes); err2 == nil {
-			pubKeyCache.Store(pemStr, rsaPub)
-			return rsaPub, nil
-		}
-		return nil, err
+		return nil, fmt.Errorf("parsing PKIX public key: %w", err)
 	}
 	rsaPub, ok := pub.(*rsa.PublicKey)
 	if !ok {
-		return nil, fmt.Errorf("not an RSA public key")
+		return nil, fmt.Errorf("public key is not an RSA key")
 	}
 	pubKeyCache.Store(pemStr, rsaPub)
 	return rsaPub, nil
