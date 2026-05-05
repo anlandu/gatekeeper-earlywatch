@@ -46,6 +46,7 @@ spec:
                     'earlywatch-protected' in oldObject.metadata.labels &&
                     oldObject.metadata.labels['earlywatch-protected'] == 'true')
                 messageExpression: |
-                  request.operation + ' of ' + request.name +
+                  (has(request.operation) ? request.operation : '<unknown>') +
+                    ' of ' + (has(request.name) ? request.name : '<unknown>') +
                     ' is not permitted because the existing object has ' +
                     'earlywatch-protected=true'

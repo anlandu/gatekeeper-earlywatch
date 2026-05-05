@@ -89,6 +89,10 @@ tests:
         object: checklock/dep-update-lock-value-only.yaml
         assertions:
           - violations: no
+      - name: allow-unlock-only-update-with-server-managed-metadata
+        object: checklock/dep-update-unlock-only-managed-metadata.yaml
+        assertions:
+          - violations: no
       - name: deny-unlock-plus-other-change
         object: checklock/dep-update-unlock-and-change.yaml
         assertions:
@@ -99,6 +103,18 @@ tests:
           - violations: yes
       - name: allow-delete-when-unlocked
         object: checklock/dep-delete-unlocked.yaml
+        assertions:
+          - violations: no
+      - name: deny-scale-subresource-when-parent-deployment-locked
+        object: checklock/dep-scale-update.yaml
+        inventory:
+          - checklock/dep-inventory-locked.yaml
+        assertions:
+          - violations: yes
+      - name: allow-scale-subresource-when-parent-deployment-unlocked
+        object: checklock/dep-scale-update.yaml
+        inventory:
+          - checklock/dep-inventory-unlocked.yaml
         assertions:
           - violations: no
 
@@ -300,35 +316,9 @@ tests:
         assertions:
           - violations: yes
 
-  - name: manual-touch-check
-    template: ../policy/07-manual-touch-check-template.yaml
-    constraint: ../policy/07-manual-touch-check-constraint.yaml
-    cases:
-      - name: deny-update-when-recent-matching-event-exists
-        object: manualtouch/deploy-update.yaml
-        inventory:
-          - manualtouch/recent-event.yaml
-        assertions:
-          - violations: yes
-      - name: allow-update-when-only-stale-event-exists
-        object: manualtouch/deploy-update.yaml
-        inventory:
-          - manualtouch/stale-event.yaml
-        assertions:
-          - violations: no
-      - name: allow-update-when-event-targets-other-resource
-        object: manualtouch/deploy-update.yaml
-        inventory:
-          - manualtouch/other-event.yaml
-        assertions:
-          - violations: no
-      - name: allow-delete-when-operations-only-include-update
-        object: manualtouch/deploy-delete.yaml
-        inventory:
-          - manualtouch/recent-event.yaml
-        assertions:
-          - violations: no
-
+  # ManualTouchCheck uses Gatekeeper external_data(), which gator does not
+  # provide. The touch-monitor Go tests cover provider/cache behavior; live
+  # Gatekeeper validation covers the external-data template wiring.
 
   # Malformed-input fixtures: defensively validate that templates don't crash
   # on missing oldObject, empty annotations, or missing labels.

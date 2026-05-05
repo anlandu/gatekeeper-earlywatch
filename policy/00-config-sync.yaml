@@ -1,5 +1,6 @@
 # Sync the kinds the referential constraints in this directory inspect.
-# Gatekeeper reads from data.inventory only after these kinds are synced.
+# ManualTouchCheck no longer needs ManualTouchEvent sync because it uses
+# Gatekeeper external_data backed by touch-monitor's in-memory cache.
 apiVersion: config.gatekeeper.sh/v1alpha1
 kind: Config
 metadata:
@@ -14,6 +15,3 @@ spec:
       - group: "apps"
         version: "v1"
         kind: "Deployment"
-      - group: "earlywatch.io"
-        version: "v1alpha1"
-        kind: "ManualTouchEvent"

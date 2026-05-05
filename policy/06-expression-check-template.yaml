@@ -51,9 +51,9 @@ spec:
 
               import future.keywords.in
 
-              op := input.review.operation
-              ns := input.review.namespace
-              nm := input.review.name
+              op := object.get(input.review, "operation", "")
+              ns := object.get(input.review, "namespace", "")
+              nm := object.get(input.review, "name", "")
 
               field_ok(p, "op")        { not p.operationIn }
               field_ok(p, "op")        { count(p.operationIn) == 0 }
@@ -61,19 +61,19 @@ spec:
 
               field_ok(p, "nsIn")      { not p.namespaceIn }
               field_ok(p, "nsIn")      { count(p.namespaceIn) == 0 }
-              field_ok(p, "nsIn")      { ns in p.namespaceIn }
+              field_ok(p, "nsIn")      { ns != ""; ns in p.namespaceIn }
 
               field_ok(p, "nsRe")      { not p.namespaceRegex }
               field_ok(p, "nsRe")      { p.namespaceRegex == "" }
-              field_ok(p, "nsRe")      { regex.match(p.namespaceRegex, ns) }
+              field_ok(p, "nsRe")      { ns != ""; regex.match(p.namespaceRegex, ns) }
 
               field_ok(p, "nIn")       { not p.nameIn }
               field_ok(p, "nIn")       { count(p.nameIn) == 0 }
-              field_ok(p, "nIn")       { nm in p.nameIn }
+              field_ok(p, "nIn")       { nm != ""; nm in p.nameIn }
 
               field_ok(p, "nRe")       { not p.nameRegex }
               field_ok(p, "nRe")       { p.nameRegex == "" }
-              field_ok(p, "nRe")       { regex.match(p.nameRegex, nm) }
+              field_ok(p, "nRe")       { nm != ""; regex.match(p.nameRegex, nm) }
 
               predicate_matches(p) {
                 field_ok(p, "op")
@@ -93,18 +93,21 @@ spec:
           source:
             validations:
               - expression: |
+                  variables.params == null || !has(variables.params.match) ||
                   !variables.params.match.exists(p,
                     (!has(p.operationIn) || p.operationIn.size() == 0 ||
-                       p.operationIn.exists(x, x == request.operation)) &&
+                       (has(request.operation) && p.operationIn.exists(x, x == request.operation))) &&
                     (!has(p.namespaceIn) || p.namespaceIn.size() == 0 ||
-                       p.namespaceIn.exists(x, x == request.namespace)) &&
+                       (has(request.namespace) && p.namespaceIn.exists(x, x == request.namespace))) &&
                     (!has(p.namespaceRegex) || p.namespaceRegex == '' ||
-                       request.namespace.matches(p.namespaceRegex)) &&
+                       (has(request.namespace) && request.namespace.matches(p.namespaceRegex))) &&
                     (!has(p.nameIn) || p.nameIn.size() == 0 ||
-                       p.nameIn.exists(x, x == request.name)) &&
+                       (has(request.name) && p.nameIn.exists(x, x == request.name))) &&
                     (!has(p.nameRegex) || p.nameRegex == '' ||
-                       request.name.matches(p.nameRegex))
+                       (has(request.name) && request.name.matches(p.nameRegex)))
                   )
                 messageExpression: |
-                  request.operation + ' of ' + request.name +
-                    ' in namespace ' + request.namespace + ' is not permitted'
+                  (has(request.operation) ? request.operation : '<unknown>') +
+                    ' of ' + (has(request.name) ? request.name : '<unknown>') +
+                    ' in namespace ' + (has(request.namespace) ? request.namespace : '<cluster>') +
+                    ' is not permitted'

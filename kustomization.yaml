@@ -5,10 +5,16 @@
 #   2. Provider CR created before any constraint that references it
 #   3. Config sync set up before referential constraints fire
 #
-# Kustomize emits everything in this `resources` order, which respects the
-# dependencies above.
+# Keep kustomize output in this `resources` order instead of the legacy
+# kind-based sort, which would otherwise place Constraints before their
+# ConstraintTemplates. Gatekeeper still creates constraint CRDs asynchronously,
+# so fresh installs may need a second `kubectl apply -k .` after templates are
+# established.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
+
+sortOptions:
+  order: fifo
 
 resources:
   # 1. Inventory sync first.
@@ -21,9 +27,8 @@ resources:
   - policy/04-approval-check-template.yaml
   - policy/05-check-lock-template.yaml
   - policy/06-expression-check-template.yaml
-  - policy/06-expression-check-real-cel-template.yaml
   - policy/07-manual-touch-check-template.yaml
-  - policy/07-manual-touch-check-cel-template.yaml
+  - policy/07-manual-touch-provider.yaml
   - policy/08-service-pod-selector-check-template.yaml
   - policy/09-data-key-safety-check-template.yaml
 
@@ -46,8 +51,6 @@ resources:
   - policy/05-check-lock-constraint.yaml
   - policy/06-expression-check-constraint.yaml
   - policy/06-expression-check-constraint-regex.yaml
-  - policy/06-expression-check-real-cel-constraint.yaml
   - policy/07-manual-touch-check-constraint.yaml
-  - policy/07-manual-touch-check-cel-constraint.yaml
   - policy/08-service-pod-selector-check-constraint.yaml
   - policy/09-data-key-safety-check-constraint.yaml

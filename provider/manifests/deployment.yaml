@@ -24,6 +24,12 @@ spec:
       labels: {app: approval-verifier}
     spec:
       serviceAccountName: approval-verifier
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: provider
           image: ghcr.io/your-org/earlywatch-approval-verifier:latest

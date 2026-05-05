@@ -151,6 +151,133 @@ func TestDuplicateDeliveryIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestAuditPopulatesCacheProviderReturnsTouched(t *testing.T) {
+	client := fakeClient(
+		namespace("team-a", map[string]string{"env": "prod"}),
+		deploymentUpdateMonitor("deployments", "early-watch-system", nil),
+	)
+	cache := NewManualTouchCache(24*time.Hour, 100)
+	event := auditEvent("audit-1", "update", stageResponseComplete, "alice", "kubectl/v1.29.0", "team-a")
+
+	postAuditWithoutRecorder(t, client, cache, event)
+
+	key := manualTouchProviderKey(TouchTarget{
+		Operation: "update",
+		APIGroup:  "Apps",
+		Resource:  "Deployments",
+		Namespace: "team-a",
+		Name:      "web",
+	}, "1h")
+	resp := postProvider(t, cache, eventTime(&event).Add(30*time.Minute), key)
+
+	if got, want := len(resp.Response.Items), 1; got != want {
+		t.Fatalf("provider items = %d, want %d", got, want)
+	}
+	if item := resp.Response.Items[0]; item.Error != "" || item.Value != "touched" {
+		t.Fatalf("provider item = %#v, want touched with no error", item)
+	}
+}
+
+func TestManualTouchProviderReturnsUntouchedForDifferentNameOrWindow(t *testing.T) {
+	cache := NewManualTouchCache(24*time.Hour, 100)
+	touchedAt := time.Date(2026, 5, 3, 12, 0, 0, 0, time.UTC)
+	cache.Record(TouchTarget{
+		Operation: "UPDATE",
+		APIGroup:  "apps",
+		Resource:  "deployments",
+		Namespace: "team-a",
+		Name:      "web",
+	}, touchedAt)
+
+	differentNameKey := manualTouchProviderKey(TouchTarget{
+		Operation: "UPDATE",
+		APIGroup:  "apps",
+		Resource:  "deployments",
+		Namespace: "team-a",
+		Name:      "api",
+	}, "1h")
+	expiredWindowKey := manualTouchProviderKey(TouchTarget{
+		Operation: "UPDATE",
+		APIGroup:  "apps",
+		Resource:  "deployments",
+		Namespace: "team-a",
+		Name:      "web",
+	}, "30m")
+
+	resp := postProvider(t, cache, touchedAt.Add(2*time.Hour), differentNameKey, expiredWindowKey)
+	if got, want := len(resp.Response.Items), 2; got != want {
+		t.Fatalf("provider items = %d, want %d", got, want)
+	}
+	for _, item := range resp.Response.Items {
+		if item.Error != "" || item.Value != "untouched" {
+			t.Fatalf("provider item = %#v, want untouched with no error", item)
+		}
+	}
+}
+
+func TestManualTouchProviderKeyAcceptsRequestUIDCacheBuster(t *testing.T) {
+	cache := NewManualTouchCache(24*time.Hour, 100)
+	touchedAt := time.Date(2026, 5, 3, 12, 0, 0, 0, time.UTC)
+	cache.Record(TouchTarget{
+		Operation: "UPDATE",
+		APIGroup:  "apps",
+		Resource:  "deployments",
+		Namespace: "team-a",
+		Name:      "web",
+	}, touchedAt)
+
+	key := manualTouchProviderKey(TouchTarget{
+		Operation: "UPDATE",
+		APIGroup:  "apps",
+		Resource:  "deployments",
+		Namespace: "team-a",
+		Name:      "web",
+	}, "1h") + "|" + encodeManualTouchKeyPart("admission-review-uid")
+
+	resp := postProvider(t, cache, touchedAt.Add(time.Minute), key)
+	if item := resp.Response.Items[0]; item.Error != "" || item.Value != "touched" {
+		t.Fatalf("provider item = %#v, want touched with no error", item)
+	}
+}
+
+func TestManualTouchProviderMalformedKeyReturnsItemError(t *testing.T) {
+	resp := postProvider(t, NewManualTouchCache(24*time.Hour, 100), time.Now(), "not-a-manual-touch-key")
+
+	if got, want := len(resp.Response.Items), 1; got != want {
+		t.Fatalf("provider items = %d, want %d", got, want)
+	}
+	if item := resp.Response.Items[0]; item.Error == "" {
+		t.Fatalf("provider item = %#v, want item error", item)
+	}
+}
+
+func TestRecorderDisabledCreatesNoCRsWhileCacheRecords(t *testing.T) {
+	client := fakeClient(
+		namespace("team-a", map[string]string{"env": "prod"}),
+		deploymentUpdateMonitor("deployments", "early-watch-system", nil),
+	)
+	cache := NewManualTouchCache(24*time.Hour, 100)
+	event := auditEvent("audit-1", "update", stageResponseComplete, "alice", "kubectl/v1.29.0", "team-a")
+
+	postAuditWithoutRecorder(t, client, cache, event)
+
+	if events := listTouchEvents(t, client); len(events.Items) != 0 {
+		t.Fatalf("got %d ManualTouchEvents, want 0", len(events.Items))
+	}
+
+	key := manualTouchProviderKey(TouchTarget{
+		Operation: "UPDATE",
+		APIGroup:  "apps",
+		Resource:  "deployments",
+		Namespace: "team-a",
+		Name:      "web",
+	}, "1h")
+	resp := postProvider(t, cache, eventTime(&event).Add(time.Minute), key)
+	if item := resp.Response.Items[0]; item.Error != "" || item.Value != "touched" {
+		t.Fatalf("provider item = %#v, want touched with no error", item)
+	}
+}
+
 func fakeClient(objects ...runtime.Object) *dynamicfake.FakeDynamicClient {
 	listKinds := map[schema.GroupVersionResource]string{
 		monitorGVR:    "ManualTouchMonitorList",
@@ -162,6 +289,16 @@ func fakeClient(objects ...runtime.Object) *dynamicfake.FakeDynamicClient {
 
 func postAudit(t *testing.T, client *dynamicfake.FakeDynamicClient, events ...AuditEvent) {
 	t.Helper()
+	postAuditWithRecorder(t, client, NewManualTouchCache(defaultTouchCacheTTL, defaultTouchCacheMaxRecords), true, events...)
+}
+
+func postAuditWithoutRecorder(t *testing.T, client *dynamicfake.FakeDynamicClient, cache *ManualTouchCache, events ...AuditEvent) {
+	t.Helper()
+	postAuditWithRecorder(t, client, cache, false, events...)
+}
+
+func postAuditWithRecorder(t *testing.T, client *dynamicfake.FakeDynamicClient, cache *ManualTouchCache, recordEvents bool, events ...AuditEvent) {
+	t.Helper()
 
 	body, err := json.Marshal(AuditEventList{Items: events})
 	if err != nil {
@@ -170,7 +307,10 @@ func postAudit(t *testing.T, client *dynamicfake.FakeDynamicClient, events ...Au
 
 	handler := &AuditHandler{
 		Detector: &TouchDetector{Client: client},
-		Recorder: &TouchRecorder{Client: client, EventNamespace: defaultEventNamespace},
+		Cache:    cache,
+	}
+	if recordEvents {
+		handler.Recorder = &TouchRecorder{Client: client, EventNamespace: defaultEventNamespace}
 	}
 
 	req := httptest.NewRequest(http.MethodPost, "/audit", bytes.NewReader(body))
@@ -180,6 +320,40 @@ func postAudit(t *testing.T, client *dynamicfake.FakeDynamicClient, events ...Au
 	if rec.Code != http.StatusOK {
 		t.Fatalf("audit handler status = %d, body = %s", rec.Code, rec.Body.String())
 	}
+}
+
+func postProvider(t *testing.T, cache *ManualTouchCache, now time.Time, keys ...string) providerResponse {
+	t.Helper()
+
+	reqBody := providerRequest{
+		APIVersion: "externaldata.gatekeeper.sh/v1beta1",
+		Kind:       "ProviderRequest",
+	}
+	reqBody.Request.Keys = keys
+
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		t.Fatalf("marshal provider request: %v", err)
+	}
+
+	handler := &ManualTouchProviderHandler{Cache: cache}
+	if !now.IsZero() {
+		handler.Now = func() time.Time { return now }
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/validate-manual-touch", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("provider handler status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	var resp providerResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal provider response: %v", err)
+	}
+	return resp
 }
 
 func listTouchEvents(t *testing.T, client *dynamicfake.FakeDynamicClient) *unstructured.UnstructuredList {
