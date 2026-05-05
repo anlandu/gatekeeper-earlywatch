@@ -1,15 +1,18 @@
-// Package main implements a Kubernetes audit-webhook sink that produces
-// EarlyWatch-compatible ManualTouchEvent custom resources.
+// Package main implements a Kubernetes audit-webhook sink and Gatekeeper
+// external-data provider for EarlyWatch ManualTouchCheck parity.
 //
 // It mirrors the behavior of EarlyWatch's audit-monitor for ManualTouchMonitor:
 // the API server POSTs audit.k8s.io/v1 EventList batches to /audit, the sink
 // evaluates completed CREATE/UPDATE/PATCH/DELETE audit events against
-// ManualTouchMonitor CRs, and matching requests are recorded as
-// ManualTouchEvent CRs for Gatekeeper's EWManualTouchCheck to consume.
+// ManualTouchMonitor CRs, and matching requests are recorded in a bounded
+// in-memory cache. Gatekeeper's EWManualTouchCheck queries that cache through
+// /validate-manual-touch. Optional ManualTouchEvent CR creation remains
+// available for compatibility by enabling --record-events.
 package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -36,9 +39,12 @@ import (
 )
 
 const (
-	defaultEventNamespace = "early-watch-system"
-	maxRequestBodyBytes   = 32 << 20 // 32 MiB
-	namespaceCacheTTL     = 30 * time.Second
+	defaultEventNamespace       = "early-watch-system"
+	maxRequestBodyBytes         = 32 << 20 // 32 MiB
+	namespaceCacheTTL           = 30 * time.Second
+	defaultTouchCacheTTL        = 24 * time.Hour
+	defaultTouchCacheMaxRecords = 10000
+	manualTouchProviderPrefix   = "manualtouch"
 
 	labelResource          = "earlywatch.io/resource"
 	labelResourceNamespace = "earlywatch.io/resource-namespace"
@@ -131,6 +137,233 @@ type AuditObjectRef struct {
 	Name       string `json:"name"`
 	APIGroup   string `json:"apiGroup"`
 	APIVersion string `json:"apiVersion"`
+}
+
+// --- Gatekeeper external-data wire types (v1beta1) ---
+
+type providerRequest struct {
+	APIVersion string `json:"apiVersion"`
+	Kind       string `json:"kind"`
+	Request    struct {
+		Keys []string `json:"keys"`
+	} `json:"request"`
+}
+
+type providerItem struct {
+	Key   string `json:"key"`
+	Value any    `json:"value,omitempty"`
+	Error string `json:"error,omitempty"`
+}
+
+type providerResponse struct {
+	APIVersion string `json:"apiVersion"`
+	Kind       string `json:"kind"`
+	Response   struct {
+		Idempotent  bool           `json:"idempotent"`
+		Items       []providerItem `json:"items"`
+		SystemError string         `json:"systemError,omitempty"`
+	} `json:"response"`
+}
+
+// TouchTarget is the admission/audit object identity used by the in-memory
+// provider. Operation, API group, and resource are normalized before storage and
+// lookups; namespace and name remain case-sensitive Kubernetes identifiers.
+type TouchTarget struct {
+	Operation string
+	APIGroup  string
+	Resource  string
+	Namespace string
+	Name      string
+}
+
+// TouchQuery is one decoded provider lookup.
+type TouchQuery struct {
+	Target TouchTarget
+	Window time.Duration
+}
+
+// ManualTouchCache stores the latest observed touch time per target.
+type ManualTouchCache struct {
+	mu         sync.Mutex
+	ttl        time.Duration
+	maxRecords int
+	records    map[TouchTarget]time.Time
+}
+
+func NewManualTouchCache(ttl time.Duration, maxRecords int) *ManualTouchCache {
+	if ttl <= 0 {
+		ttl = defaultTouchCacheTTL
+	}
+	if maxRecords <= 0 {
+		maxRecords = defaultTouchCacheMaxRecords
+	}
+	return &ManualTouchCache{
+		ttl:        ttl,
+		maxRecords: maxRecords,
+		records:    make(map[TouchTarget]time.Time),
+	}
+}
+
+func (c *ManualTouchCache) Record(target TouchTarget, touchedAt time.Time) {
+	if c == nil {
+		return
+	}
+	if touchedAt.IsZero() {
+		touchedAt = time.Now()
+	}
+	touchedAt = touchedAt.UTC()
+	target = normalizeTouchTarget(target)
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.pruneExpiredLocked(touchedAt)
+	if current, ok := c.records[target]; !ok || touchedAt.After(current) {
+		c.records[target] = touchedAt
+	}
+	c.evictOverflowLocked()
+}
+
+func (c *ManualTouchCache) HasRecent(target TouchTarget, window time.Duration, now time.Time) bool {
+	if c == nil || window <= 0 {
+		return false
+	}
+	if now.IsZero() {
+		now = time.Now()
+	}
+	now = now.UTC()
+	target = normalizeTouchTarget(target)
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.pruneExpiredLocked(now)
+	touchedAt, ok := c.records[target]
+	if !ok {
+		return false
+	}
+	if touchedAt.After(now) {
+		return true
+	}
+	return !touchedAt.Before(now.Add(-window))
+}
+
+func (c *ManualTouchCache) pruneExpiredLocked(now time.Time) {
+	if c.ttl <= 0 {
+		return
+	}
+	cutoff := now.Add(-c.ttl)
+	for target, touchedAt := range c.records {
+		if touchedAt.Before(cutoff) {
+			delete(c.records, target)
+		}
+	}
+}
+
+func (c *ManualTouchCache) evictOverflowLocked() {
+	for len(c.records) > c.maxRecords {
+		var oldestTarget TouchTarget
+		var oldest time.Time
+		first := true
+		for target, touchedAt := range c.records {
+			if first || touchedAt.Before(oldest) {
+				oldestTarget = target
+				oldest = touchedAt
+				first = false
+			}
+		}
+		delete(c.records, oldestTarget)
+	}
+}
+
+func normalizeTouchTarget(target TouchTarget) TouchTarget {
+	target.Operation = strings.ToUpper(target.Operation)
+	target.APIGroup = strings.ToLower(target.APIGroup)
+	target.Resource = strings.ToLower(target.Resource)
+	return target
+}
+
+func touchTargetFromRecord(touch TouchRecord) TouchTarget {
+	if touch.Event == nil {
+		return TouchTarget{Operation: touch.Operation}
+	}
+	return TouchTarget{
+		Operation: touch.Operation,
+		APIGroup:  touch.Event.ObjectRef.APIGroup,
+		Resource:  touch.Event.ObjectRef.Resource,
+		Namespace: touch.Event.ObjectRef.Namespace,
+		Name:      touch.Event.ObjectRef.Name,
+	}
+}
+
+func manualTouchProviderKey(target TouchTarget, windowDuration string) string {
+	target = normalizeTouchTarget(target)
+	parts := []string{
+		manualTouchProviderPrefix,
+		encodeManualTouchKeyPart(target.Operation),
+		encodeManualTouchKeyPart(target.APIGroup),
+		encodeManualTouchKeyPart(target.Resource),
+		encodeManualTouchKeyPart(target.Namespace),
+		encodeManualTouchKeyPart(target.Name),
+		encodeManualTouchKeyPart(windowDuration),
+	}
+	return strings.Join(parts, "|")
+}
+
+func parseManualTouchProviderKey(key string) (TouchQuery, error) {
+	parts := strings.Split(key, "|")
+	if (len(parts) != 7 && len(parts) != 8) || parts[0] != manualTouchProviderPrefix {
+		return TouchQuery{}, fmt.Errorf("expected %s key with 6 encoded fields and optional request UID", manualTouchProviderPrefix)
+	}
+
+	decoded := make([]string, 6)
+	for i := 1; i <= 6; i++ {
+		value, err := decodeManualTouchKeyPart(parts[i])
+		if err != nil {
+			return TouchQuery{}, fmt.Errorf("decoding field %d: %w", i, err)
+		}
+		decoded[i-1] = value
+	}
+
+	// Field 7, when present, is a request UID cache-buster. It is not part of
+	// the touch identity but must be valid base64 so malformed keys still surface
+	// as item errors instead of silently bypassing validation.
+	if len(parts) == 8 {
+		if _, err := decodeManualTouchKeyPart(parts[7]); err != nil {
+			return TouchQuery{}, fmt.Errorf("decoding field 7: %w", err)
+		}
+	}
+
+	window, err := time.ParseDuration(decoded[5])
+	if err != nil {
+		return TouchQuery{}, fmt.Errorf("parsing windowDuration %q: %w", decoded[5], err)
+	}
+	if window <= 0 {
+		return TouchQuery{}, fmt.Errorf("windowDuration must be positive")
+	}
+
+	return TouchQuery{
+		Target: normalizeTouchTarget(TouchTarget{
+			Operation: decoded[0],
+			APIGroup:  decoded[1],
+			Resource:  decoded[2],
+			Namespace: decoded[3],
+			Name:      decoded[4],
+		}),
+		Window: window,
+	}, nil
+}
+
+func encodeManualTouchKeyPart(s string) string {
+	return base64.StdEncoding.EncodeToString([]byte(s))
+}
+
+func decodeManualTouchKeyPart(s string) (string, error) {
+	decoded, err := base64.StdEncoding.DecodeString(s)
+	if err != nil {
+		return "", err
+	}
+	return string(decoded), nil
 }
 
 // TouchRecord carries the information needed to record one ManualTouchEvent.
@@ -474,11 +707,15 @@ func (r *TouchRecorder) Record(ctx context.Context, touch TouchRecord) error {
 	return nil
 }
 
-func eventTimestamp(event *AuditEvent) string {
-	if event.RequestReceivedTimestamp.IsZero() {
-		return time.Now().UTC().Format(time.RFC3339Nano)
+func eventTime(event *AuditEvent) time.Time {
+	if event == nil || event.RequestReceivedTimestamp.IsZero() {
+		return time.Now().UTC()
 	}
-	return event.RequestReceivedTimestamp.Time.UTC().Format(time.RFC3339Nano)
+	return event.RequestReceivedTimestamp.Time.UTC()
+}
+
+func eventTimestamp(event *AuditEvent) string {
+	return eventTime(event).Format(time.RFC3339Nano)
 }
 
 func firstSourceIP(ips []string) string {
@@ -509,6 +746,7 @@ func sanitizeName(s string) string {
 type AuditHandler struct {
 	Detector *TouchDetector
 	Recorder *TouchRecorder
+	Cache    *ManualTouchCache
 	Logger   *slog.Logger
 }
 
@@ -539,6 +777,10 @@ func (h *AuditHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
+		if h.Detector == nil {
+			continue
+		}
+
 		touches, err := h.Detector.Detect(r.Context(), event)
 		if err != nil {
 			logger.Warn("error detecting manual touch", "auditID", event.AuditID, "error", err)
@@ -546,25 +788,106 @@ func (h *AuditHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 		for _, touch := range touches {
-			if err := h.Recorder.Record(r.Context(), touch); err != nil {
-				logger.Warn("error recording ManualTouchEvent", "auditID", event.AuditID, "monitor", touch.MonitorName, "error", err)
+			if h.Cache != nil {
+				h.Cache.Record(touchTargetFromRecord(touch), eventTime(touch.Event))
+			}
+
+			if h.Recorder != nil {
+				if err := h.Recorder.Record(r.Context(), touch); err != nil {
+					logger.Warn("error recording ManualTouchEvent", "auditID", event.AuditID, "monitor", touch.MonitorName, "error", err)
+					continue
+				}
+				logger.Info("recorded ManualTouchEvent", "auditID", event.AuditID, "monitor", touch.MonitorName, "operation", touch.Operation)
 				continue
 			}
-			logger.Info("recorded ManualTouchEvent", "auditID", event.AuditID, "monitor", touch.MonitorName, "operation", touch.Operation)
+
+			logger.Info("recorded manual touch in cache", "auditID", event.AuditID, "monitor", touch.MonitorName, "operation", touch.Operation)
 		}
 	}
 
 	w.WriteHeader(http.StatusOK)
 }
 
-func newServer(client dynamic.Interface, eventNamespace string, logger *slog.Logger) http.Handler {
+// ManualTouchProviderHandler implements Gatekeeper's external-data provider
+// endpoint for EWManualTouchCheck.
+type ManualTouchProviderHandler struct {
+	Cache  *ManualTouchCache
+	Logger *slog.Logger
+	Now    func() time.Time
+}
+
+func (h *ManualTouchProviderHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	logger := h.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+	defer r.Body.Close()
+
+	var req providerRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		logger.Warn("failed to decode ProviderRequest", "error", err)
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+
+	now := time.Now().UTC()
+	if h.Now != nil {
+		now = h.Now().UTC()
+	}
+
+	resp := providerResponse{
+		APIVersion: "externaldata.gatekeeper.sh/v1beta1",
+		Kind:       "ProviderResponse",
+	}
+	// The provider answers from mutable in-memory state and from a moving time
+	// window, so responses should not be treated as idempotent/cacheable.
+	resp.Response.Idempotent = false
+
+	for _, key := range req.Request.Keys {
+		query, err := parseManualTouchProviderKey(key)
+		if err != nil {
+			resp.Response.Items = append(resp.Response.Items, providerItem{Key: key, Error: err.Error()})
+			continue
+		}
+
+		value := "untouched"
+		if h.Cache != nil && h.Cache.HasRecent(query.Target, query.Window, now) {
+			value = "touched"
+		}
+		resp.Response.Items = append(resp.Response.Items, providerItem{Key: key, Value: value})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+type serverOptions struct {
+	EventNamespace  string
+	RecordEvents    bool
+	CacheTTL        time.Duration
+	CacheMaxRecords int
+}
+
+func newServer(client dynamic.Interface, opts serverOptions, logger *slog.Logger) http.Handler {
 	mux := http.NewServeMux()
+	cache := NewManualTouchCache(opts.CacheTTL, opts.CacheMaxRecords)
 	handler := &AuditHandler{
 		Detector: &TouchDetector{Client: client},
-		Recorder: &TouchRecorder{Client: client, EventNamespace: eventNamespace},
+		Cache:    cache,
 		Logger:   logger,
 	}
+	if opts.RecordEvents {
+		handler.Recorder = &TouchRecorder{Client: client, EventNamespace: opts.EventNamespace}
+	}
 	mux.Handle("/audit", handler)
+	mux.Handle("/validate-manual-touch", &ManualTouchProviderHandler{Cache: cache, Logger: logger})
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 	mux.HandleFunc("/readyz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 	return mux
@@ -572,18 +895,24 @@ func newServer(client dynamic.Interface, eventNamespace string, logger *slog.Log
 
 func main() {
 	var (
-		listenAddr     string
-		eventNamespace string
-		kubeconfig     string
-		tlsCertFile    string
-		tlsKeyFile     string
+		listenAddr      string
+		eventNamespace  string
+		kubeconfig      string
+		tlsCertFile     string
+		tlsKeyFile      string
+		recordEvents    bool
+		touchCacheTTL   time.Duration
+		touchCacheLimit int
 	)
 
-	flag.StringVar(&listenAddr, "listen-address", ":8090", "Address the audit monitor HTTP server binds to.")
-	flag.StringVar(&eventNamespace, "event-namespace", defaultEventNamespace, "Namespace where ManualTouchEvent resources are created.")
+	flag.StringVar(&listenAddr, "listen-address", ":8443", "Address the audit monitor/provider HTTP server binds to.")
+	flag.StringVar(&eventNamespace, "event-namespace", defaultEventNamespace, "Namespace where ManualTouchEvent resources are created when --record-events is enabled.")
 	flag.StringVar(&kubeconfig, "kubeconfig", "", "Path to kubeconfig. Defaults to $KUBECONFIG, then in-cluster config.")
 	flag.StringVar(&tlsCertFile, "tls-cert-file", "", "TLS serving certificate. If set with --tls-private-key-file, serves HTTPS.")
 	flag.StringVar(&tlsKeyFile, "tls-private-key-file", "", "TLS private key. If set with --tls-cert-file, serves HTTPS.")
+	flag.BoolVar(&recordEvents, "record-events", false, "Also create ManualTouchEvent CRs for compatibility. The provider cache is always populated.")
+	flag.DurationVar(&touchCacheTTL, "touch-cache-ttl", defaultTouchCacheTTL, "How long manual touch records remain in the in-memory provider cache.")
+	flag.IntVar(&touchCacheLimit, "touch-cache-max-records", defaultTouchCacheMaxRecords, "Maximum number of manual touch targets retained in the in-memory provider cache.")
 	flag.Parse()
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
@@ -602,8 +931,13 @@ func main() {
 	}
 
 	srv := &http.Server{
-		Addr:              listenAddr,
-		Handler:           newServer(client, eventNamespace, logger),
+		Addr: listenAddr,
+		Handler: newServer(client, serverOptions{
+			EventNamespace:  eventNamespace,
+			RecordEvents:    recordEvents,
+			CacheTTL:        touchCacheTTL,
+			CacheMaxRecords: touchCacheLimit,
+		}, logger),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,
@@ -617,12 +951,12 @@ func main() {
 				serverErr <- errors.New("both --tls-cert-file and --tls-private-key-file are required for HTTPS")
 				return
 			}
-			logger.Info("starting ManualTouch audit monitor", "address", listenAddr, "tls", true)
+			logger.Info("starting ManualTouch audit monitor/provider", "address", listenAddr, "tls", true, "recordEvents", recordEvents)
 			serverErr <- srv.ListenAndServeTLS(tlsCertFile, tlsKeyFile)
 			return
 		}
 
-		logger.Info("starting ManualTouch audit monitor", "address", listenAddr, "tls", false)
+		logger.Info("starting ManualTouch audit monitor/provider", "address", listenAddr, "tls", false, "recordEvents", recordEvents)
 		serverErr <- srv.ListenAndServe()
 	}()
 

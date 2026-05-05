@@ -1,9 +1,10 @@
-# ManualTouch audit-webhook producer.
+# ManualTouch audit-webhook producer and Gatekeeper external-data provider.
 #
-# This replaces the old Event-scanning CronJob. The Deployment receives
-# Kubernetes audit.k8s.io/v1 EventList webhook batches at /audit, evaluates
-# ManualTouchMonitor CRs, and writes EarlyWatch-compatible ManualTouchEvent CRs
-# for EWManualTouchCheck to consume.
+# The Deployment receives Kubernetes audit.k8s.io/v1 EventList webhook batches
+# at /audit, evaluates ManualTouchMonitor CRs, records matching touches in an
+# in-memory cache, and serves Gatekeeper external-data lookups at
+# /validate-manual-touch. ManualTouchEvent CR creation is optional for
+# compatibility by adding --record-events.
 ---
 apiVersion: v1
 kind: Namespace
@@ -247,6 +248,8 @@ rules:
   - apiGroups: ["earlywatch.io"]
     resources: ["manualtouchmonitors"]
     verbs: ["get", "list", "watch"]
+  # Needed only when --record-events is enabled; kept here so the same
+  # deployment can opt in without changing RBAC.
   - apiGroups: ["earlywatch.io"]
     resources: ["manualtouchevents"]
     verbs: ["create", "get", "list"]
@@ -293,24 +296,34 @@ spec:
           image: ghcr.io/your-org/earlywatch-touch-monitor:latest
           imagePullPolicy: IfNotPresent
           args:
-            - --listen-address=:8090
+            - --listen-address=:8443
             - --event-namespace=early-watch-system
+            - --tls-cert-file=/certs/tls.crt
+            - --tls-private-key-file=/certs/tls.key
+            # Add --record-events to also create ManualTouchEvent CRs for
+            # compatibility with older inventory-based consumers.
           ports:
-            - name: audit
-              containerPort: 8090
+            - name: https
+              containerPort: 8443
               protocol: TCP
           livenessProbe:
             httpGet:
               path: /healthz
-              port: audit
+              port: https
+              scheme: HTTPS
             initialDelaySeconds: 10
             periodSeconds: 20
           readinessProbe:
             httpGet:
               path: /readyz
-              port: audit
+              port: https
+              scheme: HTTPS
             initialDelaySeconds: 5
             periodSeconds: 10
+          volumeMounts:
+            - name: certs
+              mountPath: /certs
+              readOnly: true
           resources:
             requests:
               cpu: 10m
@@ -325,6 +338,10 @@ spec:
             runAsUser: 65532
             capabilities:
               drop: ["ALL"]
+      volumes:
+        - name: certs
+          secret:
+            secretName: manual-touch-monitor-tls
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532
@@ -346,13 +363,14 @@ spec:
     app.kubernetes.io/name: earlywatch-on-gatekeeper
     app.kubernetes.io/component: manual-touch-monitor
   ports:
-    - name: audit
-      port: 8090
-      targetPort: audit
+    - name: https
+      port: 8443
+      targetPort: https
       protocol: TCP
 ---
 # Example monitor matching the shipped EWManualTouchCheck constraint:
-# kubectl PATCH/UPDATE of apps Deployments in any namespace records events.
+# kubectl PATCH/UPDATE of apps Deployments in any namespace records touches in
+# the provider cache.
 apiVersion: earlywatch.io/v1alpha1
 kind: ManualTouchMonitor
 metadata:

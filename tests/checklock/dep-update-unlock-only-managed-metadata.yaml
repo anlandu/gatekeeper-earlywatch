@@ -1,0 +1,47 @@
+apiVersion: admission.k8s.io/v1
+kind: AdmissionReview
+request:
+  operation: UPDATE
+  kind:
+    group: apps
+    version: v1
+    kind: Deployment
+  name: web
+  namespace: default
+  oldObject:
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: web
+      namespace: default
+      uid: 11111111-1111-1111-1111-111111111111
+      resourceVersion: "100"
+      generation: 3
+      creationTimestamp: "2026-05-05T06:00:00Z"
+      labels:
+        app: web
+      annotations:
+        earlywatch.io/lock: "ticket-123"
+      managedFields:
+        - manager: kubectl-client-side-apply
+          operation: Update
+    spec:
+      replicas: 2
+  object:
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: web
+      namespace: default
+      uid: 11111111-1111-1111-1111-111111111111
+      resourceVersion: "101"
+      generation: 4
+      creationTimestamp: "2026-05-05T06:00:00Z"
+      labels:
+        app: web
+      annotations: {}
+      managedFields:
+        - manager: kubectl-annotate
+          operation: Update
+    spec:
+      replicas: 2

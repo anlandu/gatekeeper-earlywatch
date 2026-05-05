@@ -5,7 +5,7 @@
 # implemented as K8sNativeValidation. This deploy-safe variant uses Rego for the
 # time comparison while keeping the annotation-based, no-inventory UX. The
 # EarlyWatch-parity implementation remains policy/07-manual-touch-check-template.yaml,
-# which reads ManualTouchEvent CRs produced by the upstream audit monitor.
+# which queries touch-monitor's external-data provider and in-memory cache.
 apiVersion: templates.gatekeeper.sh/v1
 kind: ConstraintTemplate
 metadata:

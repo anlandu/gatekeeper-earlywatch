@@ -1,20 +1,19 @@
-# EarlyWatch ManualTouchCheck -> Gatekeeper referential constraint
+# EarlyWatch ManualTouchCheck -> Gatekeeper external-data constraint
 #
-# Reads the SAME ManualTouchEvent CR that EarlyWatch's audit-monitor records.
-# Requires that EarlyWatch (or any controller producing those CRs) is running
-# AND that we sync ManualTouchEvent into data.inventory.
+# Queries the manual-touch provider served by touch-monitor instead of reading
+# synced ManualTouchEvent CRs from data.inventory. The touch-monitor audit sink
+# records matching audit events in an in-memory cache and answers provider
+# lookups at /validate-manual-touch.
 #
-# Parameters mirror EarlyWatch's CV spec:
+# Parameters mirror EarlyWatch's CV spec plus provider controls:
 #   operations      admission ops this check applies to (e.g. ["UPDATE"])
 #   windowDuration  Go duration string ("2h"); default "1h"
-#   eventNamespace  CR namespace; default "early-watch-system"
+#   provider        Gatekeeper external-data Provider name; default "manual-touch-provider"
+#   failureMode     "Ignore" (default fail-open) or "Deny" (fail-closed)
 apiVersion: templates.gatekeeper.sh/v1
 kind: ConstraintTemplate
 metadata:
   name: ewmanualtouchcheck
-  annotations:
-    metadata.gatekeeper.sh/requires-sync-data: |
-      "[[{\"groups\":[\"earlywatch.io\"], \"versions\":[\"v1alpha1\"], \"kinds\":[\"ManualTouchEvent\"]}]]"
 spec:
   crd:
     spec:
@@ -28,7 +27,10 @@ spec:
               type: array
               items: {type: string}
             windowDuration: {type: string}
-            eventNamespace: {type: string}
+            provider: {type: string}
+            failureMode:
+              type: string
+              enum: [Ignore, Deny]
   targets:
     - target: admission.k8s.gatekeeper.sh
       code:
@@ -37,20 +39,26 @@ spec:
             rego: |
               package ewmanualtouchcheck
 
-              params := input.parameters
+              params := object.get(input, "parameters", {})
+
+              provider_name := p {
+                p := object.get(params, "provider", "")
+                p != ""
+              } else := "manual-touch-provider"
+
+              failure_mode := m {
+                m := object.get(params, "failureMode", "")
+                m != ""
+              } else := "Ignore"
+
+              fail_closed {
+                lower(failure_mode) == "deny"
+              }
 
               window_dur := d {
-                d := params.windowDuration
+                d := object.get(params, "windowDuration", "")
                 d != ""
               } else := "1h"
-
-              event_ns := n {
-                n := params.eventNamespace
-                n != ""
-              } else := "early-watch-system"
-
-              window_ns := time.parse_duration_ns(window_dur)
-              now_ns    := time.now_ns()
 
               ops := object.get(params, "operations", [])
 
@@ -59,12 +67,10 @@ spec:
               # so mirror that guard-level behavior with a parameter.
               operation_applies { ops[_] == input.review.operation }
 
-              target_kind := object.get(object.get(input.review, "kind", {}), "kind", "")
-              target_resource := r {
-                r := object.get(object.get(input.review, "resource", {}), "resource", "")
-                r != ""
-              } else := lower(sprintf("%ss", [target_kind]))
-              target_api_group := object.get(object.get(input.review, "kind", {}), "group", "")
+              review_resource := object.get(input.review, "resource", {})
+              target_kind := object.get(object.get(input.review, "kind", {}), "kind", "resource")
+              target_resource := object.get(review_resource, "resource", "")
+              target_api_group := object.get(review_resource, "group", "")
               target_name := n {
                 n := object.get(input.review, "name", "")
                 n != ""
@@ -74,29 +80,58 @@ spec:
                 n != ""
               } else := object.get(object.get(input.review, "oldObject", {}), ["metadata", "namespace"], object.get(object.get(input.review, "object", {}), ["metadata", "namespace"], ""))
 
-              # EarlyWatch audit-monitor records ManualTouchEvent with labels:
-              #   earlywatch.io/resource            = plural resource
-              #   earlywatch.io/resource-namespace  = namespace (possibly empty)
-              #   earlywatch.io/resource-name       = object name
-              #   earlywatch.io/api-group           = api group (possibly empty)
-              # and spec.timestamp as RFC3339. The upstream webhook lists events
-              # by exactly these labels, then denies if any timestamp is inside
-              # the configured window.
-              event_matches_target(ev) {
-                labels := object.get(object.get(ev, "metadata", {}), "labels", {})
-                object.get(labels, "earlywatch.io/resource", "") == target_resource
-                object.get(labels, "earlywatch.io/resource-namespace", "") == target_ns
-                object.get(labels, "earlywatch.io/resource-name", "") == target_name
-                object.get(labels, "earlywatch.io/api-group", "") == target_api_group
+              request_uid := object.get(input.review, "uid", "")
+
+              # touch-monitor expects the first six encoded fields and ignores
+              # the optional request UID field. Including UID prevents a stale
+              # external-data lookup (for example, an earlier "untouched"
+              # response) from being reused after a manual touch is recorded.
+              #   manualtouch|<b64 operation>|<b64 apiGroup>|<b64 resource>|<b64 namespace>|<b64 name>|<b64 windowDuration>|<b64 requestUID>
+              manual_touch_key := sprintf("manualtouch|%s|%s|%s|%s|%s|%s|%s", [
+                base64.encode(input.review.operation),
+                base64.encode(target_api_group),
+                base64.encode(target_resource),
+                base64.encode(target_ns),
+                base64.encode(target_name),
+                base64.encode(window_dur),
+                base64.encode(request_uid),
+              ])
+
+              manual_touch_response := response {
+                operation_applies
+                response := external_data({
+                  "provider": provider_name,
+                  "keys": [manual_touch_key],
+                })
               }
 
               violation[{"msg": msg}] {
-                operation_applies
-                some name
-                ev := data.inventory.namespace[event_ns]["earlywatch.io/v1alpha1"]["ManualTouchEvent"][name]
-                event_matches_target(ev)
-                touch_ns := time.parse_rfc3339_ns(ev.spec.timestamp)
-                now_ns - touch_ns < window_ns
+                response := manual_touch_response
+                response.responses[_][1] == "touched"
                 msg := sprintf("%s %q was manually touched within %s; %s denied",
                   [target_kind, target_name, window_dur, lower(input.review.operation)])
+              }
+
+              # Provider failures default to fail-open (failureMode: Ignore) so a
+              # monitor outage does not block all matching admissions. Set
+              # failureMode: Deny for fail-closed behavior.
+              violation[{"msg": msg}] {
+                fail_closed
+                response := manual_touch_response
+                object.get(response, "system_error", "") != ""
+                msg := sprintf("manual-touch provider system error: %v", [response.system_error])
+              }
+
+              violation[{"msg": msg}] {
+                fail_closed
+                response := manual_touch_response
+                count(object.get(response, "errors", [])) > 0
+                msg := sprintf("manual-touch provider returned errors: %v", [response.errors])
+              }
+
+              violation[{"msg": msg}] {
+                fail_closed
+                response := manual_touch_response
+                count(object.get(response, "responses", [])) == 0
+                msg := "manual-touch provider returned no responses (fail closed)"
               }
