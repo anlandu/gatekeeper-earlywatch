@@ -12,6 +12,40 @@ policy engines cannot perform the behavior directly.
 Upstream reference audited for this pass:
 `brendandburns/early-watch@55fe022d6190f93474c7a15cb3408e6540160f5d`.
 
+The live CI parity job pins Gatekeeper to Helm chart `gatekeeper-3.22.2`
+(app version `v3.22.x`). The same job also deploys upstream EarlyWatch from the
+audited commit above with locally built webhook and audit-monitor images before
+installing this repository's Gatekeeper implementation. That upstream
+EarlyWatch installation is evidence that CI exercised the audited reference
+revision, not a claim that Keymaster provides EarlyWatch CRD/API compatibility.
+
+## CI parity validation and artifacts
+
+`.github/workflows/ci.yaml` and `scripts/ci-kind-parity.sh` are the canonical
+parity gate. The job performs three layers of validation:
+
+1. **Static implementation checks:** Go tests for `provider/`,
+   `touch-monitor/`, and `watchctl/`; `gator verify tests/suite.yaml`; and
+   `kubectl kustomize .`. Outputs are captured under
+   `.ci-artifacts/static/`, including the rendered default stack and
+   kustomize shape counts.
+2. **Coverage catalog checks:** `write_parity_coverage_artifact` asserts that
+   `tests/suite.yaml` still contains the expected Gator scenarios/cases and
+   that the ApprovalCheck and ManualTouch provider Go tests still cover the
+   required upstream-parity cases. The evidence file is
+   `.ci-artifacts/coverage/parity-coverage.json`.
+3. **Live kind parity checks:** the script creates a kind cluster, deploys
+   upstream EarlyWatch from
+   `55fe022d6190f93474c7a15cb3408e6540160f5d`, installs Gatekeeper chart
+   `3.22.2`, enables external data with response caching disabled, applies this
+   repository's default stack, and runs server-side dry-run admission assertions
+   for every implemented EarlyWatch capability. Deployment/version evidence is
+   written to `.ci-artifacts/upstream-earlywatch.json`,
+   `.ci-artifacts/upstream-earlywatch-validatingwebhook.yaml`,
+   `.ci-artifacts/upstream-earlywatch-workloads.txt`,
+   `.ci-artifacts/gatekeeper-helm-version.json`, and
+   `.ci-artifacts/assertions/`.
+
 ## Engine and evidence legend
 
 - **Rego behavior** describes the default parity implementation in this repo.
@@ -22,7 +56,8 @@ Upstream reference audited for this pass:
   events.
 - `gator verify tests/suite.yaml` validates the offline Gatekeeper fixtures. It
   intentionally does **not** validate `EWManualTouchCheck` because `gator` does
-  not provide the Gatekeeper `external_data()` builtin.
+  not provide the Gatekeeper `external_data()` builtin; that path is covered by
+  provider Go tests and the live kind parity script.
 - `tests/manualtouch/*` are legacy/illustrative fixtures from the old
   inventory-based approach unless they are wired into a live/provider test path.
   The real ManualTouch parity path is
@@ -122,13 +157,17 @@ ManualTouchCheck admission parity:
 Run these before cutting a release or claiming a parity-complete build:
 
 ```bash
-cd provider && go test ./...
-cd ../watchctl && go test ./...
-cd ../touch-monitor && go test ./...
-cd .. && gator verify tests/suite.yaml
+(cd provider && go test ./...)
+(cd touch-monitor && go test ./...)
+(cd watchctl && go test ./...)
+gator verify tests/suite.yaml
 kubectl kustomize . >/tmp/keymaster-kustomize.yaml
 grep -c '^kind: ConstraintTemplate$' /tmp/keymaster-kustomize.yaml
 grep -c '^kind: Provider$' /tmp/keymaster-kustomize.yaml
+
+GATEKEEPER_CHART_VERSION=3.22.2 \
+EARLYWATCH_UPSTREAM_COMMIT=55fe022d6190f93474c7a15cb3408e6540160f5d \
+bash scripts/ci-kind-parity.sh
 ```
 
 Expected default kustomization shape after the optional/example cleanup:
@@ -136,11 +175,11 @@ Expected default kustomization shape after the optional/example cleanup:
 - `ConstraintTemplate` count: `9` core parity templates.
 - `Provider` count: `2` (`approval-verifier` and `manual-touch-provider`).
 
-For live ApprovalCheck DELETE parity, verify the installed Gatekeeper validating
-webhook includes `DELETE` in its operation list before testing DELETE approvals.
-For live ManualTouch parity, verify the API-server audit webhook sends
-`ResponseComplete` audit batches to `touch-monitor` and that Gatekeeper can call
-the `manual-touch-provider` Provider.
+The CI script performs the live verification automatically: it patches the
+Gatekeeper validating webhook to include `DELETE`, verifies the Helm release is
+`gatekeeper-3.22.2`, disables Gatekeeper external-data response caching, posts a
+representative `ResponseComplete` audit batch to `touch-monitor`, and verifies
+that Gatekeeper can call the `manual-touch-provider` Provider.
 
 ## Known operational differences
 

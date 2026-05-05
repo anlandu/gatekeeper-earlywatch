@@ -1,2 +1,4 @@
 watchctl/watchctl
 *.exe
+
+.ci-artifacts/
