@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Static and kind parity
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GATEKEEPER_CHART_VERSION: "3.22.2"
+      EARLYWATCH_UPSTREAM_COMMIT: "55fe022d6190f93474c7a15cb3408e6540160f5d"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+          cache-dependency-path: |
+            **/go.mod
+            **/go.sum
+
+      - name: Install kubectl, Helm, kind, and gator
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          KUBECTL_VERSION="$(curl -fsSL https://dl.k8s.io/release/stable.txt)"
+          curl -fsSLo kubectl "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
+          chmod +x kubectl
+          sudo mv kubectl /usr/local/bin/kubectl
+
+          curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+          go install sigs.k8s.io/kind@latest
+          go install github.com/open-policy-agent/gatekeeper/v3/cmd/gator@v3.22.2
+          echo "$(go env GOPATH)/bin" >> "${GITHUB_PATH}"
+
+      - name: Run Go tests and static policy checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .ci-artifacts/static
+
+          (cd provider && go test ./... 2>&1 | tee ../.ci-artifacts/static/provider-go-test.txt)
+          (cd touch-monitor && go test ./... 2>&1 | tee ../.ci-artifacts/static/touch-monitor-go-test.txt)
+          (cd watchctl && go test ./... 2>&1 | tee ../.ci-artifacts/static/watchctl-go-test.txt)
+
+          gator verify tests/suite.yaml 2>&1 | tee .ci-artifacts/static/gator-verify.txt
+          kubectl kustomize . >.ci-artifacts/static/keymaster-kustomize.yaml
+          cp .ci-artifacts/static/keymaster-kustomize.yaml /tmp/keymaster-kustomize.yaml
+          {
+            printf 'ConstraintTemplate count: '
+            grep -c '^kind: ConstraintTemplate$' .ci-artifacts/static/keymaster-kustomize.yaml
+            printf 'Provider count: '
+            grep -c '^kind: Provider$' .ci-artifacts/static/keymaster-kustomize.yaml
+          } | tee .ci-artifacts/static/kustomize-shape.txt
+
+      - name: Run live kind parity validation
+        shell: bash
+        run: bash scripts/ci-kind-parity.sh
+
+      - name: Upload CI artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-artifacts
+          path: .ci-artifacts/
+          if-no-files-found: ignore
