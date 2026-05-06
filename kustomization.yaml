@@ -18,19 +18,19 @@ sortOptions:
 
 resources:
   # 1. Inventory sync first.
-  - policy/00-config-sync.yaml
+  - library/gatekeeper-earlywatch/config-sync.yaml
 
   # 2. ConstraintTemplates + Provider.
-  - policy/01-existing-resources-template.yaml
-  - policy/02-name-reference-check-template.yaml
-  - policy/03-annotation-check-template.yaml
-  - policy/04-approval-check-template.yaml
-  - policy/05-check-lock-template.yaml
-  - policy/06-expression-check-template.yaml
-  - policy/07-manual-touch-check-template.yaml
-  - policy/07-manual-touch-provider.yaml
-  - policy/08-service-pod-selector-check-template.yaml
-  - policy/09-data-key-safety-check-template.yaml
+  - library/gatekeeper-earlywatch/existing-resources/template.yaml
+  - library/gatekeeper-earlywatch/name-reference-check/template.yaml
+  - library/gatekeeper-earlywatch/annotation-check/template.yaml
+  - library/gatekeeper-earlywatch/approval-check/template.yaml
+  - library/gatekeeper-earlywatch/check-lock/template.yaml
+  - library/gatekeeper-earlywatch/expression-check/template.yaml
+  - library/gatekeeper-earlywatch/manual-touch-check/template.yaml
+  - library/gatekeeper-earlywatch/manual-touch-check/provider.yaml
+  - library/gatekeeper-earlywatch/service-pod-selector-check/template.yaml
+  - library/gatekeeper-earlywatch/data-key-safety-check/template.yaml
 
   # 3. Provider deployment + hardening.
   - provider/manifests/deployment.yaml
@@ -43,14 +43,14 @@ resources:
   - touch-monitor/manifests/audit-monitor.yaml
 
   # 5. Constraints last so the templates and provider are guaranteed to exist.
-  - policy/01-existing-resources-constraint.yaml
-  - policy/01-existing-resources-constraint-static.yaml
-  - policy/02-name-reference-check-constraint.yaml
-  - policy/03-annotation-check-constraint.yaml
-  - policy/04-approval-check-constraint.yaml
-  - policy/05-check-lock-constraint.yaml
-  - policy/06-expression-check-constraint.yaml
-  - policy/06-expression-check-constraint-regex.yaml
-  - policy/07-manual-touch-check-constraint.yaml
-  - policy/08-service-pod-selector-check-constraint.yaml
-  - policy/09-data-key-safety-check-constraint.yaml
+  - library/gatekeeper-earlywatch/existing-resources/constraint.yaml
+  - library/gatekeeper-earlywatch/existing-resources/constraint-static.yaml
+  - library/gatekeeper-earlywatch/name-reference-check/constraint.yaml
+  - library/gatekeeper-earlywatch/annotation-check/constraint.yaml
+  - library/gatekeeper-earlywatch/approval-check/constraint.yaml
+  - library/gatekeeper-earlywatch/check-lock/constraint.yaml
+  - library/gatekeeper-earlywatch/expression-check/constraint.yaml
+  - library/gatekeeper-earlywatch/expression-check/constraint-regex.yaml
+  - library/gatekeeper-earlywatch/manual-touch-check/constraint.yaml
+  - library/gatekeeper-earlywatch/service-pod-selector-check/constraint.yaml
+  - library/gatekeeper-earlywatch/data-key-safety-check/constraint.yaml

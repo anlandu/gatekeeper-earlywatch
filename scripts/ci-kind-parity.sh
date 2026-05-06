@@ -200,10 +200,6 @@ required_suite_cases = {
         "deny-by-name-regex",
         "allow-when-no-predicate-matches",
     ],
-    "expression-check-real-cel": [
-        "deny-delete-when-old-object-has-protected-label",
-        "allow-delete-when-protected-label-is-not-true",
-    ],
     "service-pod-selector-check": [
         "allow-create-with-zero-matching-pods",
         "allow-create-with-matching-pod",

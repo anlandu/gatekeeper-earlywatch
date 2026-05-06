@@ -4,8 +4,8 @@ metadata:
   name: earlywatch-gatekeeper
 tests:
   - name: existing-resources
-    template: ../policy/01-existing-resources-template.yaml
-    constraint: ../policy/01-existing-resources-constraint.yaml
+    template: ../library/gatekeeper-earlywatch/existing-resources/template.yaml
+    constraint: ../library/gatekeeper-earlywatch/existing-resources/constraint.yaml
     cases:
       - name: deny-delete-when-pod-matches
         object: existing-resources/svc-delete.yaml
@@ -21,8 +21,8 @@ tests:
           - violations: no
 
   - name: name-reference-check
-    template: ../policy/02-name-reference-check-template.yaml
-    constraint: ../policy/02-name-reference-check-constraint.yaml
+    template: ../library/gatekeeper-earlywatch/name-reference-check/template.yaml
+    constraint: ../library/gatekeeper-earlywatch/name-reference-check/constraint.yaml
     cases:
       - name: deny-delete-when-deployment-references
         object: name-reference/cm-delete.yaml
@@ -38,7 +38,7 @@ tests:
           - violations: no
 
   - name: name-reference-check-default-version
-    template: ../policy/02-name-reference-check-template.yaml
+    template: ../library/gatekeeper-earlywatch/name-reference-check/template.yaml
     constraint: name-reference/default-version-constraint.yaml
     cases:
       - name: deny-delete-when-resource-version-omitted-defaults-to-v1
@@ -49,8 +49,8 @@ tests:
           - violations: yes
 
   - name: annotation-check
-    template: ../policy/03-annotation-check-template.yaml
-    constraint: ../policy/03-annotation-check-constraint.yaml
+    template: ../library/gatekeeper-earlywatch/annotation-check/template.yaml
+    constraint: ../library/gatekeeper-earlywatch/annotation-check/constraint.yaml
     cases:
       - name: deny-when-annotation-missing
         object: annotation/ns-delete-no-anno.yaml
@@ -66,8 +66,8 @@ tests:
           - violations: no
 
   - name: checklock
-    template: ../policy/05-check-lock-template.yaml
-    constraint: ../policy/05-check-lock-constraint.yaml
+    template: ../library/gatekeeper-earlywatch/check-lock/template.yaml
+    constraint: ../library/gatekeeper-earlywatch/check-lock/constraint.yaml
     cases:
       - name: deny-delete-when-locked
         object: checklock/dep-delete-locked.yaml
@@ -119,8 +119,8 @@ tests:
           - violations: no
 
   - name: expression-check
-    template: ../policy/06-expression-check-template.yaml
-    constraint: ../policy/06-expression-check-constraint.yaml
+    template: ../library/gatekeeper-earlywatch/expression-check/template.yaml
+    constraint: ../library/gatekeeper-earlywatch/expression-check/constraint.yaml
     cases:
       - name: deny-delete-in-production
         object: expression/cm-delete-prod.yaml
@@ -132,8 +132,8 @@ tests:
           - violations: no
 
   - name: service-pod-selector-check
-    template: ../policy/08-service-pod-selector-check-template.yaml
-    constraint: ../policy/08-service-pod-selector-check-constraint.yaml
+    template: ../library/gatekeeper-earlywatch/service-pod-selector-check/template.yaml
+    constraint: ../library/gatekeeper-earlywatch/service-pod-selector-check/constraint.yaml
     cases:
       - name: allow-create-with-zero-matching-pods
         object: service-selector/svc-create.yaml
@@ -192,8 +192,8 @@ tests:
           - violations: yes
 
   - name: expression-check-regex
-    template: ../policy/06-expression-check-template.yaml
-    constraint: ../policy/06-expression-check-constraint-regex.yaml
+    template: ../library/gatekeeper-earlywatch/expression-check/template.yaml
+    constraint: ../library/gatekeeper-earlywatch/expression-check/constraint-regex.yaml
     cases:
       - name: deny-by-namespace-regex
         object: expression/cm-delete-prod.yaml
@@ -208,22 +208,9 @@ tests:
         assertions:
           - violations: no
 
-  - name: expression-check-real-cel
-    template: ../policy/06-expression-check-real-cel-template.yaml
-    constraint: ../policy/06-expression-check-real-cel-constraint.yaml
-    cases:
-      - name: deny-delete-when-old-object-has-protected-label
-        object: expression/cm-delete-protected-label.yaml
-        assertions:
-          - violations: yes
-      - name: allow-delete-when-protected-label-is-not-true
-        object: expression/cm-delete-unprotected-label.yaml
-        assertions:
-          - violations: no
-
   - name: data-key-safety-check
-    template: ../policy/09-data-key-safety-check-template.yaml
-    constraint: ../policy/09-data-key-safety-check-constraint.yaml
+    template: ../library/gatekeeper-earlywatch/data-key-safety-check/template.yaml
+    constraint: ../library/gatekeeper-earlywatch/data-key-safety-check/constraint.yaml
     cases:
       - name: deny-when-key-still-referenced
         object: datakey/cm-update-drop-key.yaml
@@ -245,7 +232,7 @@ tests:
           - violations: yes
 
   - name: data-key-safety-check-default-version
-    template: ../policy/09-data-key-safety-check-template.yaml
+    template: ../library/gatekeeper-earlywatch/data-key-safety-check/template.yaml
     constraint: datakey/default-version-constraint.yaml
     cases:
       - name: deny-when-resource-version-omitted-defaults-to-v1
@@ -256,8 +243,8 @@ tests:
           - violations: yes
 
   - name: existing-resources-static-selector
-    template: ../policy/01-existing-resources-template.yaml
-    constraint: ../policy/01-existing-resources-constraint-static.yaml
+    template: ../library/gatekeeper-earlywatch/existing-resources/template.yaml
+    constraint: ../library/gatekeeper-earlywatch/existing-resources/constraint-static.yaml
     cases:
       - name: deny-when-In-matches
         object: existing-resources-static/svc-delete.yaml
@@ -273,7 +260,7 @@ tests:
           - violations: no
 
   - name: existing-resources-upstream-parity
-    template: ../policy/01-existing-resources-template.yaml
+    template: ../library/gatekeeper-earlywatch/existing-resources/template.yaml
     constraint: existing-resources-parity/no-selector-constraint.yaml
     cases:
       - name: deny-no-selector-matches-any-dependent
@@ -284,7 +271,7 @@ tests:
           - violations: yes
 
   - name: existing-resources-empty-static-selector
-    template: ../policy/01-existing-resources-template.yaml
+    template: ../library/gatekeeper-earlywatch/existing-resources/template.yaml
     constraint: existing-resources-parity/empty-static-selector-constraint.yaml
     cases:
       - name: deny-empty-static-selector-matches-any-dependent
@@ -295,7 +282,7 @@ tests:
           - violations: yes
 
   - name: existing-resources-field-selector-precedence
-    template: ../policy/01-existing-resources-template.yaml
+    template: ../library/gatekeeper-earlywatch/existing-resources/template.yaml
     constraint: existing-resources-parity/field-wins-over-static-constraint.yaml
     cases:
       - name: allow-when-field-selector-does-not-match-even-if-static-would
@@ -306,7 +293,7 @@ tests:
           - violations: no
 
   - name: existing-resources-namespace-delete-scope
-    template: ../policy/01-existing-resources-template.yaml
+    template: ../library/gatekeeper-earlywatch/existing-resources/template.yaml
     constraint: existing-resources-parity/namespace-delete-constraint.yaml
     cases:
       - name: deny-namespace-delete-when-dependent-exists-inside-namespace
@@ -323,8 +310,8 @@ tests:
   # Malformed-input fixtures: defensively validate that templates don't crash
   # on missing oldObject, empty annotations, or missing labels.
   - name: malformed-inputs
-    template: ../policy/03-annotation-check-template.yaml
-    constraint: ../policy/03-annotation-check-constraint.yaml
+    template: ../library/gatekeeper-earlywatch/annotation-check/template.yaml
+    constraint: ../library/gatekeeper-earlywatch/annotation-check/constraint.yaml
     cases:
       - name: missing-annotations-map
         object: malformed/ns-delete-no-annotations-map.yaml

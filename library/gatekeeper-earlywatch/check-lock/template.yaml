@@ -13,7 +13,7 @@
 # kind is autoscaling/v1 Scale and whose object does not carry the parent
 # Deployment annotations. The template therefore looks up the parent Deployment
 # from Gatekeeper inventory for Scale requests; keep Deployments synced in
-# policy/00-config-sync.yaml.
+# library/gatekeeper-earlywatch/config-sync.yaml.
 apiVersion: templates.gatekeeper.sh/v1
 kind: ConstraintTemplate
 metadata:

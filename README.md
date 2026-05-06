@@ -14,14 +14,14 @@ audit, dryrun, metrics, and testing pipeline.
 ## What's here
 
 ```
-00-config-sync.yaml          Gatekeeper Config: which kinds get synced into data.inventory
-01..09-*.yaml                Core parity ConstraintTemplate + Constraint pairs
-provider/                    External-data provider for ApprovalCheck (Go service)
-touch-monitor/               Audit-webhook service + ManualTouch external-data provider
-tests/                       gator verify suite + AdmissionReview/inventory fixtures
-docs/                        Threat model, GitOps notes, parity matrix
-watchctl/                    CLI for signing approvals (ApprovalCheck)
-kustomization.yaml           Single-entrypoint default parity stack
+library/gatekeeper-earlywatch/  Gatekeeper Library layout with templates, default constraints, and Config sync
+catalog.yaml                    gator-generated PolicyCatalog for the library templates
+provider/                       External-data provider for ApprovalCheck (Go service)
+touch-monitor/                  Audit-webhook service + ManualTouch external-data provider
+tests/                          gator verify suite + AdmissionReview/inventory fixtures
+docs/                           Threat model, GitOps notes, parity matrix
+watchctl/                       CLI for signing approvals (ApprovalCheck)
+kustomization.yaml              Single-entrypoint default parity stack
 ```
 
 Core templates use Rego everywhere and add Gatekeeper `K8sNativeValidation`
@@ -36,26 +36,15 @@ These templates and their default constraints are included in `kustomization.yam
 
 | # | Behavior                                                              | Template                                       | Native CEL? |
 |---|-----------------------------------------------------------------------|------------------------------------------------|-------------|
-| 1 | Deny when dependent resources still exist                             | `policy/01-existing-resources-template.yaml`          | No — needs inventory lookups |
-| 2 | Deny when other resources still reference this one by name            | `policy/02-name-reference-check-template.yaml`        | No — needs inventory lookups |
-| 3 | Require an annotation (optionally with a specific value)              | `policy/03-annotation-check-template.yaml`            | Yes |
-| 4 | Require a valid RSA-PSS signed approval annotation                    | `policy/04-approval-check-template.yaml`              | No — needs crypto/provider |
-| 5 | Honor a lock annotation that blocks delete (optionally update)        | `policy/05-check-lock-template.yaml`                  | No — compares old/new objects in Rego |
-| 6 | Deny based on structured expression predicates                        | `policy/06-expression-check-template.yaml`            | Yes |
-| 7 | Deny when touch-monitor reports a recent manual touch                 | `policy/07-manual-touch-check-template.yaml`          | No — needs external-data provider |
-| 8 | Deny Service updates that orphan all matching Pods                    | `policy/08-service-pod-selector-check-template.yaml`  | No — needs inventory lookups |
-| 9 | Deny ConfigMap/Secret updates that drop a key still in use            | `policy/09-data-key-safety-check-template.yaml`       | No — needs inventory lookups |
-
-## Optional examples not applied by default
-
-These files remain useful examples/tests, but are intentionally excluded from
-`kustomization.yaml` so the default stack contains only parity-critical
-resources:
-
-| File(s) | Purpose |
-|---|---|
-| `policy/06-expression-check-real-cel-template.yaml`, `policy/06-expression-check-real-cel-constraint.yaml` | Optional authored native-CEL ExpressionCheck example. Use this pattern when an arbitrary CEL expression must be compiled into a dedicated Gatekeeper template. |
-| `policy/07-manual-touch-check-cel-template.yaml`, `policy/07-manual-touch-check-cel-constraint.yaml` | Optional annotation/timestamp Rego variant. Despite the filename, it is not native-CEL enforcement and is not the EarlyWatch ManualTouch parity path. |
+| 1 | Deny when dependent resources still exist                             | `library/gatekeeper-earlywatch/existing-resources/template.yaml`          | No — needs inventory lookups |
+| 2 | Deny when other resources still reference this one by name            | `library/gatekeeper-earlywatch/name-reference-check/template.yaml`        | No — needs inventory lookups |
+| 3 | Require an annotation (optionally with a specific value)              | `library/gatekeeper-earlywatch/annotation-check/template.yaml`            | Yes |
+| 4 | Require a valid RSA-PSS signed approval annotation                    | `library/gatekeeper-earlywatch/approval-check/template.yaml`              | No — needs crypto/provider |
+| 5 | Honor a lock annotation that blocks delete (optionally update)        | `library/gatekeeper-earlywatch/check-lock/template.yaml`                  | No — compares old/new objects in Rego |
+| 6 | Deny based on structured expression predicates                        | `library/gatekeeper-earlywatch/expression-check/template.yaml`            | Yes |
+| 7 | Deny when touch-monitor reports a recent manual touch                 | `library/gatekeeper-earlywatch/manual-touch-check/template.yaml`          | No — needs external-data provider |
+| 8 | Deny Service updates that orphan all matching Pods                    | `library/gatekeeper-earlywatch/service-pod-selector-check/template.yaml`  | No — needs inventory lookups |
+| 9 | Deny ConfigMap/Secret updates that drop a key still in use            | `library/gatekeeper-earlywatch/data-key-safety-check/template.yaml`       | No — needs inventory lookups |
 
 ## Quick start
 
@@ -81,7 +70,7 @@ gator verify tests/suite.yaml
   `enforcementAction`.
 - **Referential checks read `data.inventory`.** Referential templates carry a
   `metadata.gatekeeper.sh/requires-sync-data` annotation listing the GVKs that
-  must be synced via `policy/00-config-sync.yaml`. `EWManualTouchCheck` is the
+  must be synced via `library/gatekeeper-earlywatch/config-sync.yaml`. `EWManualTouchCheck` is the
   exception: it queries a Gatekeeper external-data provider backed by
   `touch-monitor/`'s in-memory audit-event cache.
 - **ApprovalCheck delegates crypto to an external-data Provider.** Pure Rego
@@ -108,14 +97,12 @@ gator verify tests/suite.yaml
 - **`requireValue` boolean on AnnotationCheck.** Explicit "key must be
   present" vs "key must equal this value." Cleaner than nil-vs-empty
   string handling.
-- **ExpressionCheck has two supported forms.** `EWExpressionCheck` exposes a
+- **ExpressionCheck uses structured predicates.** `EWExpressionCheck` exposes a
   portable structured schema (`operationIn`, `namespaceIn`, `namespaceRegex`,
   `nameIn`, `nameRegex`) with both Rego and native CEL implementations for
-  common predicates. For arbitrary CEL, author one native-CEL
-  `ConstraintTemplate` per expression, as shown by
-  `policy/06-expression-check-real-cel-template.yaml`. Gatekeeper cannot
-  dynamically `eval()` a CEL expression passed as a constraint parameter, so
-  arbitrary expressions live in templates instead of runtime strings.
+  common EarlyWatch predicates. Gatekeeper cannot dynamically `eval()` a CEL
+  expression passed as a constraint parameter; custom arbitrary CEL should live
+  in separately authored `ConstraintTemplate`s outside the default parity stack.
 - **`GuardRule.message` is not a parameter today.** Templates produce a
   default denial message; to customize, fork the template.
 
@@ -140,7 +127,7 @@ Two important operator notes:
 ## Operational features Gatekeeper provides
 
 - Per-constraint `enforcementAction: dryrun | warn | deny` for safe rollout.
-  See `policy/05-check-lock-constraint-dryrun.yaml`.
+  See `library/gatekeeper-earlywatch/check-lock/constraint-dryrun.yaml`.
 - Audit pod populates `Constraint.status.violations[]`.
 - Prometheus metrics for constraint evaluations.
 - `gator verify` unit tests with AdmissionReview + inventory fixtures
@@ -152,10 +139,9 @@ Two important operator notes:
 This repository includes a Gatekeeper `PolicyCatalog` in [`catalog.yaml`](catalog.yaml),
 generated with `gator policy generate-catalog`.
 
-The catalog is generated from the Gatekeeper Library-compatible layout under
-[`library/`](library/). To keep the canonical policy source under [`policy/`](policy/),
-[`scripts/generate-catalog.sh`](scripts/generate-catalog.sh) rebuilds `library/` from
-the default parity `ConstraintTemplate`s before regenerating the catalog.
+The canonical policy source lives in the Gatekeeper Library-compatible layout
+under [`library/`](library/). [`scripts/generate-catalog.sh`](scripts/generate-catalog.sh)
+runs the `gator` CLI directly against that layout.
 
 To regenerate the catalog:
 
@@ -167,7 +153,6 @@ Optional overrides:
 
 ```bash
 CATALOG_NAME=gatekeeper-earlywatch \
-CATALOG_CATEGORY=gatekeeper-earlywatch \
 CATALOG_VERSION=v0.1.0 \
 CATALOG_BASE_URL=https://raw.githubusercontent.com/sozercan/gatekeeper-earlywatch/main \
 CATALOG_REPOSITORY=https://github.com/sozercan/gatekeeper-earlywatch \

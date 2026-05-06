@@ -1,7 +1,7 @@
 # Policy Catalog for Gatekeeper Library
 #
 # This file is auto-generated. Do not edit directly.
-# Generated at: 2026-05-06T06:41:53Z
+# Generated at: 2026-05-06T22:18:55Z
 #
 # To regenerate, run:
 #   gator policy generate-catalog --library-path=. --output=catalog.yaml
@@ -12,7 +12,7 @@ kind: PolicyCatalog
 metadata:
   name: gatekeeper-earlywatch
   repository: https://github.com/sozercan/gatekeeper-earlywatch
-  updatedAt: "2026-05-06T06:41:53.19820364Z"
+  updatedAt: "2026-05-06T22:18:55.62075322Z"
   version: v0.1.0
 policies:
 - category: gatekeeper-earlywatch
