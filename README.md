@@ -15,7 +15,7 @@ audit, dryrun, metrics, and testing pipeline.
 
 ```
 library/gatekeeper-earlywatch/  Gatekeeper Library layout with templates, default constraints, and Config sync
-catalog.yaml                    gator-generated PolicyCatalog for the library templates
+catalog.yaml                    Gatekeeper PolicyCatalog for browsing the library templates
 provider/                       External-data provider for ApprovalCheck (Go service)
 touch-monitor/                  Audit-webhook service + ManualTouch external-data provider
 tests/                          gator verify suite + AdmissionReview/inventory fixtures
@@ -136,25 +136,11 @@ Two important operator notes:
 
 ## Policy catalog
 
-This repository includes a Gatekeeper `PolicyCatalog` in [`catalog.yaml`](catalog.yaml),
-generated with `gator policy generate-catalog`.
+This repository includes a Gatekeeper `PolicyCatalog` in [`catalog.yaml`](catalog.yaml)
+so Gatekeeper tooling can discover the available EarlyWatch parity templates.
 
-The canonical policy source lives in the Gatekeeper Library-compatible layout
-under [`library/`](library/). [`scripts/generate-catalog.sh`](scripts/generate-catalog.sh)
-runs the `gator` CLI directly against that layout.
-
-To regenerate the catalog:
-
-```bash
-./scripts/generate-catalog.sh
-```
-
-Optional overrides:
-
-```bash
-CATALOG_NAME=gatekeeper-earlywatch \
-CATALOG_VERSION=v0.1.0 \
-CATALOG_BASE_URL=https://raw.githubusercontent.com/sozercan/gatekeeper-earlywatch/main \
-CATALOG_REPOSITORY=https://github.com/sozercan/gatekeeper-earlywatch \
-./scripts/generate-catalog.sh
-```
+The installable policy templates live in the Gatekeeper Library-compatible layout
+under [`library/gatekeeper-earlywatch/`](library/gatekeeper-earlywatch/). Use the
+root [`kustomization.yaml`](kustomization.yaml) when you want the default parity
+stack, or copy individual templates and constraints from `library/` when you need
+a narrower rollout.
