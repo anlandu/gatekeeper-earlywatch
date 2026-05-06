@@ -1,0 +1,117 @@
+# EarlyWatch ExpressionCheck -> Gatekeeper (parametric predicate set)
+#
+# CEL/Rego cannot eval a runtime expression string, so instead we expose a
+# structured predicate schema that covers the surface EarlyWatch documents:
+# operation/namespace/name with equality or regex match.
+#
+# Semantics: a request is BLOCKED iff *any* item in `match` is true.
+# Each `match` item is the AND of every populated field (operationIn, namespaceIn,
+# namespaceRegex, nameIn, nameRegex).
+#
+# Example replicating EarlyWatch `namespace == 'production'`:
+#   match:
+#     - namespaceIn: ["production"]
+#       operationIn: ["DELETE"]
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: ewexpressioncheck
+  annotations:
+    metadata.gatekeeper.sh/title: "Expression Check"
+    metadata.gatekeeper.sh/version: "1.0.0"
+    description: "Evaluates structured operation, namespace, and name predicates against admission requests."
+spec:
+  crd:
+    spec:
+      names:
+        kind: EWExpressionCheck
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            match:
+              type: array
+              items:
+                type: object
+                properties:
+                  operationIn:
+                    type: array
+                    items: {type: string}
+                  namespaceIn:
+                    type: array
+                    items: {type: string}
+                  namespaceRegex: {type: string}
+                  nameIn:
+                    type: array
+                    items: {type: string}
+                  nameRegex: {type: string}
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      code:
+        - engine: Rego
+          source:
+            rego: |
+              package ewexpressioncheck
+
+              import future.keywords.in
+
+              op := object.get(input.review, "operation", "")
+              ns := object.get(input.review, "namespace", "")
+              nm := object.get(input.review, "name", "")
+
+              field_ok(p, "op")        { not p.operationIn }
+              field_ok(p, "op")        { count(p.operationIn) == 0 }
+              field_ok(p, "op")        { op in p.operationIn }
+
+              field_ok(p, "nsIn")      { not p.namespaceIn }
+              field_ok(p, "nsIn")      { count(p.namespaceIn) == 0 }
+              field_ok(p, "nsIn")      { ns != ""; ns in p.namespaceIn }
+
+              field_ok(p, "nsRe")      { not p.namespaceRegex }
+              field_ok(p, "nsRe")      { p.namespaceRegex == "" }
+              field_ok(p, "nsRe")      { ns != ""; regex.match(p.namespaceRegex, ns) }
+
+              field_ok(p, "nIn")       { not p.nameIn }
+              field_ok(p, "nIn")       { count(p.nameIn) == 0 }
+              field_ok(p, "nIn")       { nm != ""; nm in p.nameIn }
+
+              field_ok(p, "nRe")       { not p.nameRegex }
+              field_ok(p, "nRe")       { p.nameRegex == "" }
+              field_ok(p, "nRe")       { nm != ""; regex.match(p.nameRegex, nm) }
+
+              predicate_matches(p) {
+                field_ok(p, "op")
+                field_ok(p, "nsIn")
+                field_ok(p, "nsRe")
+                field_ok(p, "nIn")
+                field_ok(p, "nRe")
+              }
+
+              violation[{"msg": msg}] {
+                some i
+                predicate_matches(input.parameters.match[i])
+                msg := sprintf("%s of %q in namespace %q is not permitted (rule #%d)",
+                  [op, nm, ns, i])
+              }
+        - engine: K8sNativeValidation
+          source:
+            validations:
+              - expression: |
+                  variables.params == null || !has(variables.params.match) ||
+                  !variables.params.match.exists(p,
+                    (!has(p.operationIn) || p.operationIn.size() == 0 ||
+                       (has(request.operation) && p.operationIn.exists(x, x == request.operation))) &&
+                    (!has(p.namespaceIn) || p.namespaceIn.size() == 0 ||
+                       (has(request.namespace) && p.namespaceIn.exists(x, x == request.namespace))) &&
+                    (!has(p.namespaceRegex) || p.namespaceRegex == '' ||
+                       (has(request.namespace) && request.namespace.matches(p.namespaceRegex))) &&
+                    (!has(p.nameIn) || p.nameIn.size() == 0 ||
+                       (has(request.name) && p.nameIn.exists(x, x == request.name))) &&
+                    (!has(p.nameRegex) || p.nameRegex == '' ||
+                       (has(request.name) && request.name.matches(p.nameRegex)))
+                  )
+                messageExpression: |
+                  (has(request.operation) ? request.operation : '<unknown>') +
+                    ' of ' + (has(request.name) ? request.name : '<unknown>') +
+                    ' in namespace ' + (has(request.namespace) ? request.namespace : '<cluster>') +
+                    ' is not permitted'

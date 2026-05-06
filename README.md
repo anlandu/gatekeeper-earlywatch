@@ -34,17 +34,17 @@ crypto, or audit-event ingestion. See
 
 These templates and their default constraints are included in `kustomization.yaml`:
 
-| # | Behavior                                                              | Template                                       | CEL? |
-|---|-----------------------------------------------------------------------|------------------------------------------------|------|
-| 1 | Deny when dependent resources still exist                             | `policy/01-existing-resources-template.yaml`          | — referential |
-| 2 | Deny when other resources still reference this one by name            | `policy/02-name-reference-check-template.yaml`        | — referential |
-| 3 | Require an annotation (optionally with a specific value)              | `policy/03-annotation-check-template.yaml`            | ✅ |
-| 4 | Require a valid RSA-PSS signed approval annotation                    | `policy/04-approval-check-template.yaml`              | — needs crypto/provider |
-| 5 | Honor a lock annotation that blocks delete (optionally update)        | `policy/05-check-lock-template.yaml`                  | — Rego diff |
-| 6 | Deny based on structured expression predicates                        | `policy/06-expression-check-template.yaml`            | ✅ |
-| 7 | Deny when touch-monitor reports a recent manual touch                 | `policy/07-manual-touch-check-template.yaml`          | — external-data/provider |
-| 8 | Deny Service updates that orphan all matching Pods                    | `policy/08-service-pod-selector-check-template.yaml`  | — referential |
-| 9 | Deny ConfigMap/Secret updates that drop a key still in use            | `policy/09-data-key-safety-check-template.yaml`       | — referential |
+| # | Behavior                                                              | Template                                       | Native CEL? |
+|---|-----------------------------------------------------------------------|------------------------------------------------|-------------|
+| 1 | Deny when dependent resources still exist                             | `policy/01-existing-resources-template.yaml`          | No — needs inventory lookups |
+| 2 | Deny when other resources still reference this one by name            | `policy/02-name-reference-check-template.yaml`        | No — needs inventory lookups |
+| 3 | Require an annotation (optionally with a specific value)              | `policy/03-annotation-check-template.yaml`            | Yes |
+| 4 | Require a valid RSA-PSS signed approval annotation                    | `policy/04-approval-check-template.yaml`              | No — needs crypto/provider |
+| 5 | Honor a lock annotation that blocks delete (optionally update)        | `policy/05-check-lock-template.yaml`                  | No — compares old/new objects in Rego |
+| 6 | Deny based on structured expression predicates                        | `policy/06-expression-check-template.yaml`            | Yes |
+| 7 | Deny when touch-monitor reports a recent manual touch                 | `policy/07-manual-touch-check-template.yaml`          | No — needs external-data provider |
+| 8 | Deny Service updates that orphan all matching Pods                    | `policy/08-service-pod-selector-check-template.yaml`  | No — needs inventory lookups |
+| 9 | Deny ConfigMap/Secret updates that drop a key still in use            | `policy/09-data-key-safety-check-template.yaml`       | No — needs inventory lookups |
 
 ## Optional examples not applied by default
 
@@ -146,3 +146,30 @@ Two important operator notes:
 - `gator verify` unit tests with AdmissionReview + inventory fixtures
   (full suite under `tests/`).
 - Mutation webhooks if you want to *fix* instead of *reject*.
+
+## Policy catalog
+
+This repository includes a Gatekeeper `PolicyCatalog` in [`catalog.yaml`](catalog.yaml),
+generated with `gator policy generate-catalog`.
+
+The catalog is generated from the Gatekeeper Library-compatible layout under
+[`library/`](library/). To keep the canonical policy source under [`policy/`](policy/),
+[`scripts/generate-catalog.sh`](scripts/generate-catalog.sh) rebuilds `library/` from
+the default parity `ConstraintTemplate`s before regenerating the catalog.
+
+To regenerate the catalog:
+
+```bash
+./scripts/generate-catalog.sh
+```
+
+Optional overrides:
+
+```bash
+CATALOG_NAME=gatekeeper-earlywatch \
+CATALOG_CATEGORY=gatekeeper-earlywatch \
+CATALOG_VERSION=v0.1.0 \
+CATALOG_BASE_URL=https://raw.githubusercontent.com/sozercan/gatekeeper-earlywatch/main \
+CATALOG_REPOSITORY=https://github.com/sozercan/gatekeeper-earlywatch \
+./scripts/generate-catalog.sh
+```

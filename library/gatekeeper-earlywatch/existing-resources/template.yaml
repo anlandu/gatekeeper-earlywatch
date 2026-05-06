@@ -1,0 +1,193 @@
+# EarlyWatch ExistingResources -> Gatekeeper referential constraint (parametric)
+#
+# Generic over the "subject" kind (the object being changed) and the "existing"
+# kind (the dependents we look for). Two ways to specify the selector:
+#
+#   labelSelectorFromField   dot-path on the subject (e.g. "spec.selector")
+#                            -> equality match on each key/value in that map
+#   labelSelector            static metav1.LabelSelector with optional
+#                            matchLabels and matchExpressions:
+#                              {key, operator: In|NotIn|Exists|DoesNotExist, values}
+#
+# Upstream selector precedence is:
+#   1. labelSelectorFromField, when non-empty
+#   2. labelSelector, when present (an empty selector matches everything)
+#   3. no selector, which also matches everything
+#
+# Parameters mirror the EarlyWatch CV spec:
+#   existingResources.apiGroup          (string, default "")
+#   existingResources.version           (string, default "v1")
+#   existingResources.kind              (string)
+#   existingResources.labelSelectorFromField
+#   existingResources.labelSelector.matchLabels
+#   existingResources.labelSelector.matchExpressions
+#   existingResources.sameNamespace     (bool, default true)
+#   operations                          (e.g. ["DELETE"])
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: ewexistingresources
+  annotations:
+    metadata.gatekeeper.sh/title: "Existing Resources"
+    metadata.gatekeeper.sh/version: "1.0.0"
+    description: "Requires configured resources to already exist in Gatekeeper inventory before matching operations are allowed."
+    # Inventory dependency varies by constraint (parametric over `existingResources`).
+    # Operators MUST add the dependent kind to 00-config-sync.yaml before applying
+    # any EWExistingResources constraint. Common kinds:
+    metadata.gatekeeper.sh/requires-sync-data: |
+      "[[{\"groups\":[\"\"],\"versions\":[\"v1\"],\"kinds\":[\"Pod\"]},{\"groups\":[\"apps\"],\"versions\":[\"v1\"],\"kinds\":[\"Deployment\",\"StatefulSet\",\"DaemonSet\"]}]]"
+spec:
+  crd:
+    spec:
+      names:
+        kind: EWExistingResources
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            operations:
+              type: array
+              items: {type: string}
+            existingResources:
+              type: object
+              properties:
+                apiGroup: {type: string}
+                version:  {type: string}
+                kind:     {type: string}
+                labelSelectorFromField: {type: string}
+                labelSelector:
+                  type: object
+                  properties:
+                    matchLabels:
+                      type: object
+                      additionalProperties: {type: string}
+                    matchExpressions:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          key:      {type: string}
+                          operator: {type: string}
+                          values:
+                            type: array
+                            items: {type: string}
+                sameNamespace: {type: boolean}
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      code:
+        - engine: Rego
+          source:
+            rego: |
+              package ewexistingresources
+
+              import future.keywords.every
+              import future.keywords.in
+
+              review_object := object.get(input.review, "object", null)
+              review_old_object := object.get(input.review, "oldObject", null)
+
+              # Upstream prefers req.Object.Raw (for UPDATE) and falls back to
+              # req.OldObject.Raw (for DELETE, where Object is empty).
+              subject := review_object {
+                review_object != null
+              } else := review_old_object {
+                review_old_object != null
+              }
+
+              subject_metadata := object.get(subject, "metadata", {})
+              subject_name := object.get(subject_metadata, "name", object.get(input.review, "name", ""))
+              subject_ns := object.get(subject_metadata, "namespace", object.get(input.review, "namespace", ""))
+              subject_kind := object.get(object.get(input.review, "kind", {}), "kind", "")
+
+              params := input.parameters
+              ops    := params.operations
+              er     := params.existingResources
+
+              er_group   := object.get(er, "apiGroup", "")
+              er_version := object.get(er, "version", "v1")
+
+              # gv key in data.inventory: "v1" for core, "<group>/<version>" otherwise.
+              gv := er_version { er_group == "" }
+              gv := sprintf("%s/%s", [er_group, er_version]) { er_group != "" }
+
+              # ---------- selector resolution ----------
+              # labelSelectorFromField wins over a static labelSelector when
+              # both are configured. A present-but-empty static selector and no
+              # selector both mirror labels.Everything().
+              has_field_selector {
+                object.get(er, "labelSelectorFromField", "") != ""
+              }
+
+              has_static_selector {
+                object.get(er, "labelSelector", null) != null
+              }
+
+              missing_field_sentinel := {"__earlywatch_missing_selector_field__": true}
+
+              # field-derived selector (dot-path into the subject object)
+              field_selector := fs {
+                has_field_selector
+                field := object.get(er, "labelSelectorFromField", "")
+                fs := object.get(subject, split(field, "."), missing_field_sentinel)
+                fs != missing_field_sentinel
+                is_object(fs)
+              }
+
+              # ---------- label match (handles all selector modes) ----------
+              labels_match(labels) {
+                has_field_selector
+                every k, v in field_selector { labels[k] == v }
+              }
+              labels_match(labels) {
+                not has_field_selector
+                has_static_selector
+                ml := object.get(er, ["labelSelector", "matchLabels"], {})
+                every k, v in ml { labels[k] == v }
+                mx := object.get(er, ["labelSelector", "matchExpressions"], [])
+                every expr in mx { match_expression(labels, expr) }
+              }
+              labels_match(labels) {
+                not has_field_selector
+                not has_static_selector
+              }
+
+              match_expression(labels, e) { e.operator == "In";    some i; labels[e.key] == e.values[i] }
+              match_expression(labels, e) { e.operator == "NotIn"; not value_in_list(labels[e.key], e.values) }
+              match_expression(labels, e) { e.operator == "Exists";      labels[e.key] }
+              match_expression(labels, e) { e.operator == "DoesNotExist"; not labels[e.key] }
+
+              value_in_list(v, list) { some i; list[i] == v }
+
+              # ---------- inventory iteration ----------
+              # Upstream EarlyWatch defaults SameNamespace to true when omitted.
+              # For DELETE of a Namespace, the admission namespace is empty but
+              # the subject name is the namespace being deleted; mirror upstream
+              # by searching inside that namespace.
+              same_ns := object.get(er, "sameNamespace", true)
+
+              effective_subject_ns := subject_ns {
+                subject_ns != ""
+              } else := subject_name {
+                lower(subject_kind) == "namespace"
+              } else := ""
+
+              ns_scope := effective_subject_ns { same_ns == true }
+              ns_scope := other_ns            { same_ns == false; some other_ns; data.inventory.namespace[other_ns] }
+
+              existing_match[name] {
+                obj := data.inventory.namespace[ns_scope][gv][er.kind][name]
+                labels := object.get(object.get(obj, "metadata", {}), "labels", {})
+                labels_match(labels)
+              }
+
+              violation[{"msg": msg}] {
+                input.review.operation in ops
+                some n
+                existing_match[n]
+                msg := sprintf("%s %q in %q cannot be %sd: dependent %s/%s %q still exists",
+                  [input.review.kind.kind,
+                   subject_name,
+                   effective_subject_ns,
+                   lower(input.review.operation),
+                   er.kind, gv, n])
+              }

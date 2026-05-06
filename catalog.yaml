@@ -1,0 +1,71 @@
+# Policy Catalog for Gatekeeper Library
+#
+# This file is auto-generated. Do not edit directly.
+# Generated at: 2026-05-06T06:41:53Z
+#
+# To regenerate, run:
+#   gator policy generate-catalog --library-path=. --output=catalog.yaml
+#
+apiVersion: gator.gatekeeper.sh/v1alpha1
+bundles: []
+kind: PolicyCatalog
+metadata:
+  name: gatekeeper-earlywatch
+  repository: https://github.com/sozercan/gatekeeper-earlywatch
+  updatedAt: "2026-05-06T06:41:53.19820364Z"
+  version: v0.1.0
+policies:
+- category: gatekeeper-earlywatch
+  description: Requires matching resources to carry a configured annotation and, optionally,
+    a configured annotation value.
+  name: ewannotationcheck
+  templatePath: https://raw.githubusercontent.com/sozercan/gatekeeper-earlywatch/main/library/gatekeeper-earlywatch/annotation-check/template.yaml
+  version: v1.0.0
+- category: gatekeeper-earlywatch
+  description: Verifies signed approvals for DELETE and UPDATE requests through the
+    EarlyWatch external-data provider.
+  name: ewapprovalcheck
+  templatePath: https://raw.githubusercontent.com/sozercan/gatekeeper-earlywatch/main/library/gatekeeper-earlywatch/approval-check/template.yaml
+  version: v1.0.0
+- category: gatekeeper-earlywatch
+  description: Blocks updates or deletes to locked resources unless the change is
+    limited to allowed lock metadata.
+  name: ewchecklock
+  templatePath: https://raw.githubusercontent.com/sozercan/gatekeeper-earlywatch/main/library/gatekeeper-earlywatch/check-lock/template.yaml
+  version: v1.0.0
+- category: gatekeeper-earlywatch
+  description: Prevents removing ConfigMap or Secret data keys that are still referenced
+    by Pods.
+  name: ewdatakeysafetycheck
+  templatePath: https://raw.githubusercontent.com/sozercan/gatekeeper-earlywatch/main/library/gatekeeper-earlywatch/data-key-safety-check/template.yaml
+  version: v1.0.0
+- category: gatekeeper-earlywatch
+  description: Requires configured resources to already exist in Gatekeeper inventory
+    before matching operations are allowed.
+  name: ewexistingresources
+  templatePath: https://raw.githubusercontent.com/sozercan/gatekeeper-earlywatch/main/library/gatekeeper-earlywatch/existing-resources/template.yaml
+  version: v1.0.0
+- category: gatekeeper-earlywatch
+  description: Evaluates structured operation, namespace, and name predicates against
+    admission requests.
+  name: ewexpressioncheck
+  templatePath: https://raw.githubusercontent.com/sozercan/gatekeeper-earlywatch/main/library/gatekeeper-earlywatch/expression-check/template.yaml
+  version: v1.0.0
+- category: gatekeeper-earlywatch
+  description: Requires a recent matching manual touch event before allowing protected
+    operations.
+  name: ewmanualtouchcheck
+  templatePath: https://raw.githubusercontent.com/sozercan/gatekeeper-earlywatch/main/library/gatekeeper-earlywatch/manual-touch-check/template.yaml
+  version: v1.0.0
+- category: gatekeeper-earlywatch
+  description: Prevents deleting resources that are still referenced by configured
+    inventory objects.
+  name: ewnamereferencecheck
+  templatePath: https://raw.githubusercontent.com/sozercan/gatekeeper-earlywatch/main/library/gatekeeper-earlywatch/name-reference-check/template.yaml
+  version: v1.0.0
+- category: gatekeeper-earlywatch
+  description: Prevents pod label changes or deletions that would break existing Service
+    pod selectors.
+  name: ewservicepodselectorcheck
+  templatePath: https://raw.githubusercontent.com/sozercan/gatekeeper-earlywatch/main/library/gatekeeper-earlywatch/service-pod-selector-check/template.yaml
+  version: v1.0.0
