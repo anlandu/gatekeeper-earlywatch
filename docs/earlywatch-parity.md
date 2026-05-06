@@ -17,7 +17,7 @@ The live CI parity job pins Gatekeeper to Helm chart `gatekeeper-3.22.2`
 audited commit above with locally built webhook and audit-monitor images before
 installing this repository's Gatekeeper implementation. That upstream
 EarlyWatch installation is evidence that CI exercised the audited reference
-revision, not a claim that Keymaster provides EarlyWatch CRD/API compatibility.
+revision, not a claim that gatekeeper-earlywatch provides EarlyWatch CRD/API compatibility.
 
 ## CI parity validation and artifacts
 
@@ -89,16 +89,16 @@ local artifacts under `/tmp` from the validation run.
 
 | Area | Evidence directory | Live assertions |
 |---|---|---|
-| ApprovalCheck | `/tmp/keymaster-approval-live-20260505061928` | DELETE missing/bogus signatures denied; valid DELETE signature allowed; UPDATE missing change-approval denied; valid change signature allowed; signed cleanup delete allowed. |
-| AnnotationCheck | `/tmp/keymaster-annotation-live-20260505061944` | Namespace DELETE denied when `earlywatch.io/confirm-delete` was missing or wrong; allowed when the annotation value was `yes`. |
-| ExpressionCheck | `/tmp/keymaster-expression-live-20260505062022` | ConfigMap DELETE denied in `production`; `critical-*` ConfigMap DELETE denied outside production; non-matching ConfigMap DELETE allowed. |
-| ManualTouchCheck / ManualTouchMonitor | `/tmp/keymaster-manualtouch-live-20260505062556` | Untouched Deployment UPDATE allowed; synthetic Kubernetes audit `EventList` posted to `/audit`; subsequent matching Deployment UPDATE denied through `manual-touch-provider`. |
-| ExistingResourcesCheck | `/tmp/keymaster-existing-live-20260505062806` | Service DELETE denied while a Pod matched `spec.selector`; allowed after the Pod was removed and inventory caught up; static `In(production,staging)` selector behaved the same. |
-| NameReferenceCheck | `/tmp/keymaster-nameref-live-20260505062956` | ConfigMap DELETE denied while a Deployment still referenced it through volume/envFrom paths; allowed after the Deployment was deleted and inventory caught up. |
-| CheckLock | `/tmp/keymaster-checklock-live-20260505063722` | Locked Deployment normal UPDATE, scale-subresource UPDATE, and DELETE denied; removing only the lock annotation allowed; DELETE after unlock allowed. |
-| ServicePodSelectorCheck | `/tmp/keymaster-service-selector-live-20260505063830` | Non-headless Service selector update to zero matching Pods denied; headless Service selector update allowed; Service whose old selector already matched zero Pods could update. |
-| DataKeySafetyCheck | `/tmp/keymaster-datakey-live-20260505064032` | Referenced ConfigMap key removal denied; unreferenced key removal allowed. |
-| Scoping parity and webhook operations | `/tmp/keymaster-scoping-live-20260505064107` | ApprovalCheck-scoped ConfigMap UPDATE outside `default` allowed without approval; Namespace DELETE without confirm annotation denied and allowed after annotation; webhook operations verified as `["CREATE","UPDATE","DELETE"]`. |
+| ApprovalCheck | `/tmp/gatekeeper-earlywatch-approval-live-20260505061928` | DELETE missing/bogus signatures denied; valid DELETE signature allowed; UPDATE missing change-approval denied; valid change signature allowed; signed cleanup delete allowed. |
+| AnnotationCheck | `/tmp/gatekeeper-earlywatch-annotation-live-20260505061944` | Namespace DELETE denied when `earlywatch.io/confirm-delete` was missing or wrong; allowed when the annotation value was `yes`. |
+| ExpressionCheck | `/tmp/gatekeeper-earlywatch-expression-live-20260505062022` | ConfigMap DELETE denied in `production`; `critical-*` ConfigMap DELETE denied outside production; non-matching ConfigMap DELETE allowed. |
+| ManualTouchCheck / ManualTouchMonitor | `/tmp/gatekeeper-earlywatch-manualtouch-live-20260505062556` | Untouched Deployment UPDATE allowed; synthetic Kubernetes audit `EventList` posted to `/audit`; subsequent matching Deployment UPDATE denied through `manual-touch-provider`. |
+| ExistingResourcesCheck | `/tmp/gatekeeper-earlywatch-existing-live-20260505062806` | Service DELETE denied while a Pod matched `spec.selector`; allowed after the Pod was removed and inventory caught up; static `In(production,staging)` selector behaved the same. |
+| NameReferenceCheck | `/tmp/gatekeeper-earlywatch-nameref-live-20260505062956` | ConfigMap DELETE denied while a Deployment still referenced it through volume/envFrom paths; allowed after the Deployment was deleted and inventory caught up. |
+| CheckLock | `/tmp/gatekeeper-earlywatch-checklock-live-20260505063722` | Locked Deployment normal UPDATE, scale-subresource UPDATE, and DELETE denied; removing only the lock annotation allowed; DELETE after unlock allowed. |
+| ServicePodSelectorCheck | `/tmp/gatekeeper-earlywatch-service-selector-live-20260505063830` | Non-headless Service selector update to zero matching Pods denied; headless Service selector update allowed; Service whose old selector already matched zero Pods could update. |
+| DataKeySafetyCheck | `/tmp/gatekeeper-earlywatch-datakey-live-20260505064032` | Referenced ConfigMap key removal denied; unreferenced key removal allowed. |
+| Scoping parity and webhook operations | `/tmp/gatekeeper-earlywatch-scoping-live-20260505064107` | ApprovalCheck-scoped ConfigMap UPDATE outside `default` allowed without approval; Namespace DELETE without confirm annotation denied and allowed after annotation; webhook operations verified as `["CREATE","UPDATE","DELETE"]`. |
 
 ## Optional/example files not in the default kustomization
 
@@ -161,9 +161,9 @@ Run these before cutting a release or claiming a parity-complete build:
 (cd touch-monitor && go test ./...)
 (cd watchctl && go test ./...)
 gator verify tests/suite.yaml
-kubectl kustomize . >/tmp/keymaster-kustomize.yaml
-grep -c '^kind: ConstraintTemplate$' /tmp/keymaster-kustomize.yaml
-grep -c '^kind: Provider$' /tmp/keymaster-kustomize.yaml
+kubectl kustomize . >/tmp/gatekeeper-earlywatch-kustomize.yaml
+grep -c '^kind: ConstraintTemplate$' /tmp/gatekeeper-earlywatch-kustomize.yaml
+grep -c '^kind: Provider$' /tmp/gatekeeper-earlywatch-kustomize.yaml
 
 GATEKEEPER_CHART_VERSION=3.22.2 \
 EARLYWATCH_UPSTREAM_COMMIT=55fe022d6190f93474c7a15cb3408e6540160f5d \
@@ -183,7 +183,7 @@ that Gatekeeper can call the `manual-touch-provider` Provider.
 
 ## Known operational differences
 
-1. **No EarlyWatch API compatibility.** Keymaster uses Gatekeeper CRDs and
+1. **No EarlyWatch API compatibility.** gatekeeper-earlywatch uses Gatekeeper CRDs and
    constraints instead of EarlyWatch validator CRDs.
 2. **Runtime arbitrary-CEL strings are intentionally not supported.** Gatekeeper
    compiles native CEL at template creation. Use the structured

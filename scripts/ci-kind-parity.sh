@@ -10,9 +10,9 @@ set -Eeuo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT}"
 
-CLUSTER_NAME="${KIND_CLUSTER_NAME:-keymaster-ci}"
-APPROVAL_IMAGE="${APPROVAL_IMAGE:-keymaster/approval-verifier:ci}"
-TOUCH_IMAGE="${TOUCH_IMAGE:-keymaster/touch-monitor:ci}"
+CLUSTER_NAME="${KIND_CLUSTER_NAME:-gatekeeper-earlywatch-ci}"
+APPROVAL_IMAGE="${APPROVAL_IMAGE:-gatekeeper-earlywatch/approval-verifier:ci}"
+TOUCH_IMAGE="${TOUCH_IMAGE:-gatekeeper-earlywatch/touch-monitor:ci}"
 ARTIFACT_DIR="${ARTIFACT_DIR:-${ROOT}/.ci-artifacts}"
 WORK_DIR="$(mktemp -d)"
 MANUAL_TOUCH_USER_AGENT="kubectl/v1.32.0 (linux/amd64) kubernetes/ci"
@@ -63,11 +63,11 @@ collect_artifacts() {
   kubectl get providers.externaldata.gatekeeper.sh -o yaml >"${ARTIFACT_DIR}/providers.yaml" 2>&1 || true
   kubectl get config.config.gatekeeper.sh -n gatekeeper-system -o yaml >"${ARTIFACT_DIR}/gatekeeper-config.yaml" 2>&1 || true
 
-  if kubectl api-resources --api-group=constraints.gatekeeper.sh -o name >/tmp/keymaster-ci-constraint-resources 2>/dev/null; then
+  if kubectl api-resources --api-group=constraints.gatekeeper.sh -o name >/tmp/gatekeeper-earlywatch-ci-constraint-resources 2>/dev/null; then
     while IFS= read -r resource; do
       [[ -z "${resource}" ]] && continue
       kubectl get "${resource}" -o yaml >"${ARTIFACT_DIR}/constraints-${resource//\//-}.yaml" 2>&1 || true
-    done </tmp/keymaster-ci-constraint-resources
+    done </tmp/gatekeeper-earlywatch-ci-constraint-resources
   fi
 
   for ns in gatekeeper-system early-watch-system; do
@@ -597,7 +597,7 @@ wait_for_gatekeeper_webhook() {
   for i in {1..30}; do
     log "Waiting for Gatekeeper webhook admission readiness (attempt ${i}/30)"
     set +e
-    output="$(kubectl create namespace keymaster-webhook-probe --dry-run=server -o yaml 2>&1 >/dev/null)"
+    output="$(kubectl create namespace gatekeeper-earlywatch-webhook-probe --dry-run=server -o yaml 2>&1 >/dev/null)"
     rc=$?
     set -e
     if [[ "${rc}" -eq 0 ]]; then
@@ -639,7 +639,7 @@ generate_provider_certs() {
 
   run openssl genrsa -out "${cert_dir}/ca.key" 4096
   run openssl req -x509 -new -nodes -key "${cert_dir}/ca.key" -sha256 -days 7 \
-    -subj "/CN=keymaster-ci-provider-ca" -out "${cert_dir}/ca.crt"
+    -subj "/CN=gatekeeper-earlywatch-ci-provider-ca" -out "${cert_dir}/ca.crt"
 
   generate_service_cert() {
     local name="$1"

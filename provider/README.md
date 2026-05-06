@@ -24,8 +24,8 @@ other than `"valid"`.
 ```bash
 # 1. Build and publish or load the image used by manifests/deployment.yaml.
 #    For local kind testing, for example:
-docker build -t docker.io/sozercan/keymaster-approval-verifier:parity .
-kind load docker-image docker.io/sozercan/keymaster-approval-verifier:parity
+docker build -t docker.io/sozercan/gatekeeper-earlywatch-approval-verifier:parity .
+kind load docker-image docker.io/sozercan/gatekeeper-earlywatch-approval-verifier:parity
 #    Then patch manifests/deployment.yaml to use that image, or retag to the
 #    image already referenced there.
 
