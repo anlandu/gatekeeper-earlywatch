@@ -139,8 +139,26 @@ Two important operator notes:
 This repository includes a Gatekeeper `PolicyCatalog` in [`catalog.yaml`](catalog.yaml)
 so Gatekeeper tooling can discover the available EarlyWatch parity templates.
 
+To install the cataloged `ConstraintTemplate`s with `gator`:
+
+```bash
+export GATOR_CATALOG_URL=https://raw.githubusercontent.com/sozercan/gatekeeper-earlywatch/main/catalog.yaml
+gator policy update
+gator policy install \
+  ewexistingresources \
+  ewnamereferencecheck \
+  ewannotationcheck \
+  ewapprovalcheck \
+  ewchecklock \
+  ewexpressioncheck \
+  ewmanualtouchcheck \
+  ewservicepodselectorcheck \
+  ewdatakeysafetycheck
+```
+
 The installable policy templates live in the Gatekeeper Library-compatible layout
 under [`library/gatekeeper-earlywatch/`](library/gatekeeper-earlywatch/). Use the
-root [`kustomization.yaml`](kustomization.yaml) when you want the default parity
-stack, or copy individual templates and constraints from `library/` when you need
-a narrower rollout.
+root [`kustomization.yaml`](kustomization.yaml) when you want the complete default
+parity stack, including default constraints, inventory sync, and external-data
+providers; copy individual templates and constraints from `library/` when you
+need a narrower rollout.
