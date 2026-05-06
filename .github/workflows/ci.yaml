@@ -55,13 +55,13 @@ jobs:
           (cd watchctl && go test ./... 2>&1 | tee ../.ci-artifacts/static/watchctl-go-test.txt)
 
           gator verify tests/suite.yaml 2>&1 | tee .ci-artifacts/static/gator-verify.txt
-          kubectl kustomize . >.ci-artifacts/static/keymaster-kustomize.yaml
-          cp .ci-artifacts/static/keymaster-kustomize.yaml /tmp/keymaster-kustomize.yaml
+          kubectl kustomize . >.ci-artifacts/static/gatekeeper-earlywatch-kustomize.yaml
+          cp .ci-artifacts/static/gatekeeper-earlywatch-kustomize.yaml /tmp/gatekeeper-earlywatch-kustomize.yaml
           {
             printf 'ConstraintTemplate count: '
-            grep -c '^kind: ConstraintTemplate$' .ci-artifacts/static/keymaster-kustomize.yaml
+            grep -c '^kind: ConstraintTemplate$' .ci-artifacts/static/gatekeeper-earlywatch-kustomize.yaml
             printf 'Provider count: '
-            grep -c '^kind: Provider$' .ci-artifacts/static/keymaster-kustomize.yaml
+            grep -c '^kind: Provider$' .ci-artifacts/static/gatekeeper-earlywatch-kustomize.yaml
           } | tee .ci-artifacts/static/kustomize-shape.txt
 
       - name: Run live kind parity validation
