@@ -28,6 +28,9 @@ kind: ConstraintTemplate
 metadata:
   name: ewexistingresources
   annotations:
+    metadata.gatekeeper.sh/title: "Existing Resources"
+    metadata.gatekeeper.sh/version: "1.0.0"
+    description: "Requires configured resources to already exist in Gatekeeper inventory before matching operations are allowed."
     # Inventory dependency varies by constraint (parametric over `existingResources`).
     # Operators MUST add the dependent kind to 00-config-sync.yaml before applying
     # any EWExistingResources constraint. Common kinds:

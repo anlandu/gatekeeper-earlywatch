@@ -46,7 +46,7 @@ Update `manifests/audit-monitor.yaml` with the image you publish.
 ## Deploy
 
 The root kustomization includes `touch-monitor/manifests/audit-monitor.yaml`
-and `policy/07-manual-touch-provider.yaml`:
+and `library/gatekeeper-earlywatch/manual-touch-check/provider.yaml`:
 
 ```bash
 kubectl apply -k .
@@ -63,7 +63,7 @@ That manifest installs:
 
 The deployment expects a TLS Secret named `manual-touch-monitor-tls` containing
 `tls.crt` and `tls.key`. Configure the `caBundle` in
-`policy/07-manual-touch-provider.yaml` with the base64-encoded CA certificate
+`library/gatekeeper-earlywatch/manual-touch-check/provider.yaml` with the base64-encoded CA certificate
 that signed that serving certificate so Gatekeeper can call
 `/validate-manual-touch`.
 

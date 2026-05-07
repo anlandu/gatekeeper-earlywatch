@@ -1,8 +1,3 @@
-# EarlyWatch CheckLock -> Gatekeeper (standalone bundle)
-#
-# This file combines the current ConstraintTemplate and sample Constraint.
-# For the normal ordered install, prefer kustomization.yaml.
----
 # EarlyWatch CheckLock -> Gatekeeper
 # Blocks DELETE (and UPDATE when lockOnMutate=true) when `earlywatch.io/lock`
 # annotation is set to a non-empty value on the existing object.
@@ -18,12 +13,15 @@
 # kind is autoscaling/v1 Scale and whose object does not carry the parent
 # Deployment annotations. The template therefore looks up the parent Deployment
 # from Gatekeeper inventory for Scale requests; keep Deployments synced in
-# policy/00-config-sync.yaml.
+# library/gatekeeper-earlywatch/config-sync.yaml.
 apiVersion: templates.gatekeeper.sh/v1
 kind: ConstraintTemplate
 metadata:
   name: ewchecklock
   annotations:
+    metadata.gatekeeper.sh/title: "Check Lock"
+    metadata.gatekeeper.sh/version: "1.0.0"
+    description: "Blocks updates or deletes to locked resources unless the change is limited to allowed lock metadata."
     metadata.gatekeeper.sh/requires-sync-data: |
       "[[{\"groups\":[\"apps\"],\"versions\":[\"v1\"],\"kinds\":[\"Deployment\"]}]]"
 spec:
@@ -133,18 +131,3 @@ spec:
                 msg := sprintf("resource %q is locked by %q; update denied",
                   [request_name, annotation_key])
               }
----
-apiVersion: constraints.gatekeeper.sh/v1beta1
-kind: EWCheckLock
-metadata:
-  name: deployment-must-not-be-locked
-spec:
-  match:
-    kinds:
-      - apiGroups: ["apps"]
-        kinds: ["Deployment"]
-      - apiGroups: ["autoscaling"]
-        kinds: ["Scale"]
-  parameters:
-    lockOnMutate: true
-    annotation: "earlywatch.io/lock"

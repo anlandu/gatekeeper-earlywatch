@@ -13,6 +13,10 @@ apiVersion: templates.gatekeeper.sh/v1
 kind: ConstraintTemplate
 metadata:
   name: ewannotationcheck
+  annotations:
+    metadata.gatekeeper.sh/title: "Annotation Check"
+    metadata.gatekeeper.sh/version: "1.0.0"
+    description: "Requires matching resources to carry a configured annotation and, optionally, a configured annotation value."
 spec:
   crd:
     spec:

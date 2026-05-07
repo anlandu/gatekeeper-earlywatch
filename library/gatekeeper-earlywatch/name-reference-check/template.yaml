@@ -18,6 +18,9 @@ kind: ConstraintTemplate
 metadata:
   name: ewnamereferencecheck
   annotations:
+    metadata.gatekeeper.sh/title: "Name Reference Check"
+    metadata.gatekeeper.sh/version: "1.0.0"
+    description: "Prevents deleting resources that are still referenced by configured inventory objects."
     # Inventory dependency varies by `resources[]`. Add each referrer kind to
     # 00-config-sync.yaml. Typical referrers below; add more as needed:
     metadata.gatekeeper.sh/requires-sync-data: |

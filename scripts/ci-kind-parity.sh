@@ -15,6 +15,7 @@ APPROVAL_IMAGE="${APPROVAL_IMAGE:-gatekeeper-earlywatch/approval-verifier:ci}"
 TOUCH_IMAGE="${TOUCH_IMAGE:-gatekeeper-earlywatch/touch-monitor:ci}"
 ARTIFACT_DIR="${ARTIFACT_DIR:-${ROOT}/.ci-artifacts}"
 WORK_DIR="$(mktemp -d)"
+CI_KIND_PARITY_HELPER="${WORK_DIR}/ci-kind-parity-helper"
 MANUAL_TOUCH_USER_AGENT="kubectl/v1.32.0 (linux/amd64) kubernetes/ci"
 GATEKEEPER_CHART_VERSION="${GATEKEEPER_CHART_VERSION:-3.22.2}"
 EARLYWATCH_REPO_URL="${EARLYWATCH_REPO_URL:-https://github.com/brendandburns/early-watch}"
@@ -102,7 +103,7 @@ trap cleanup EXIT
 
 require_commands() {
   local missing=0
-  for cmd in docker git go kind kubectl helm openssl python3 curl; do
+  for cmd in docker git go kind kubectl helm openssl curl; do
     if ! command -v "${cmd}" >/dev/null 2>&1; then
       printf 'missing required command: %s\n' "${cmd}" >&2
       missing=1
@@ -111,6 +112,14 @@ require_commands() {
   if [[ "${missing}" -ne 0 ]]; then
     exit 127
   fi
+}
+
+build_ci_helper() {
+  run go build -o "${CI_KIND_PARITY_HELPER}" "${ROOT}/scripts/ci-kind-parity-helper.go"
+}
+
+ci_helper() {
+  run "${CI_KIND_PARITY_HELPER}" "$@"
 }
 
 create_kind_cluster() {
@@ -138,237 +147,13 @@ build_and_load_images() {
 
 write_parity_coverage_artifact() {
   local artifact="${ARTIFACT_DIR}/coverage/parity-coverage.json"
-  python3 - "${artifact}" <<'PY'
-import json
-import pathlib
-import re
-import sys
-
-artifact = pathlib.Path(sys.argv[1])
-root = pathlib.Path.cwd()
-suite_path = root / "tests" / "suite.yaml"
-suite = suite_path.read_text(encoding="utf-8").splitlines()
-
-parsed = {}
-current = None
-for line in suite:
-    m = re.match(r"^  - name: (.+)$", line)
-    if m:
-        current = m.group(1).strip()
-        parsed[current] = []
-        continue
-    m = re.match(r"^      - name: (.+)$", line)
-    if m and current:
-        parsed[current].append(m.group(1).strip())
-
-required_suite_cases = {
-    "existing-resources": [
-        "deny-delete-when-pod-matches",
-        "allow-delete-when-no-pod-matches",
-    ],
-    "name-reference-check": [
-        "deny-delete-when-deployment-references",
-        "allow-delete-when-no-reference",
-    ],
-    "name-reference-check-default-version": [
-        "deny-delete-when-resource-version-omitted-defaults-to-v1",
-    ],
-    "annotation-check": [
-        "deny-when-annotation-missing",
-        "deny-when-annotation-wrong",
-        "allow-when-annotation-correct",
-    ],
-    "checklock": [
-        "deny-delete-when-locked",
-        "deny-delete-when-lock-value-is-not-true",
-        "deny-update-when-locked",
-        "allow-unlock-only-update",
-        "allow-lock-annotation-value-only-update",
-        "allow-unlock-only-update-with-server-managed-metadata",
-        "deny-unlock-plus-other-change",
-        "deny-unlock-plus-status-change",
-        "allow-delete-when-unlocked",
-        "deny-scale-subresource-when-parent-deployment-locked",
-        "allow-scale-subresource-when-parent-deployment-unlocked",
-    ],
-    "expression-check": [
-        "deny-delete-in-production",
-        "allow-delete-elsewhere",
-    ],
-    "expression-check-regex": [
-        "deny-by-namespace-regex",
-        "deny-by-name-regex",
-        "allow-when-no-predicate-matches",
-    ],
-    "expression-check-real-cel": [
-        "deny-delete-when-old-object-has-protected-label",
-        "allow-delete-when-protected-label-is-not-true",
-    ],
-    "service-pod-selector-check": [
-        "allow-create-with-zero-matching-pods",
-        "allow-create-with-matching-pod",
-        "deny-update-when-old-had-pod-new-has-zero",
-        "allow-update-when-old-selector-had-zero-pods",
-        "allow-update-when-new-selector-has-pod",
-        "allow-headless-service-update",
-        "allow-when-new-selector-is-empty-map-and-pods-exist",
-        "deny-when-old-empty-selector-matched-pods-and-new-selector-matches-none",
-        "deny-when-non-headless-service-changes-to-headless-and-new-selector-matches-none",
-    ],
-    "data-key-safety-check": [
-        "deny-when-key-still-referenced",
-        "allow-when-only-other-keys-referenced",
-        "deny-when-binary-data-key-still-referenced",
-    ],
-    "data-key-safety-check-default-version": [
-        "deny-when-resource-version-omitted-defaults-to-v1",
-    ],
-    "existing-resources-static-selector": [
-        "deny-when-In-matches",
-        "allow-when-In-does-not-match",
-    ],
-    "existing-resources-upstream-parity": [
-        "deny-no-selector-matches-any-dependent",
-    ],
-    "existing-resources-empty-static-selector": [
-        "deny-empty-static-selector-matches-any-dependent",
-    ],
-    "existing-resources-field-selector-precedence": [
-        "allow-when-field-selector-does-not-match-even-if-static-would",
-    ],
-    "existing-resources-namespace-delete-scope": [
-        "deny-namespace-delete-when-dependent-exists-inside-namespace",
-    ],
-    "malformed-inputs": [
-        "missing-annotations-map",
-    ],
-}
-
-required_go_tests = {
-    "provider/main_test.go": [
-        "TestDeleteValid",
-        "TestDeleteTampered",
-        "TestPKCS1PublicKeyRejectedForUpstreamParity",
-        "TestUpdateValid",
-        "TestUpdateUnsignedSpecChange",
-        "TestUpdateNormalizationIgnoresStatusAndManagedMetadata",
-        "TestUpdateNormalizationStripsChangeAnnotationAndDropsEmptyAnnotations",
-        "TestUpdateNormalizationDropsNullAnnotations",
-        "TestUpdateBase64KeyAllowsPipeInJSON",
-        "TestUpdateTamperedMeaningfulChangeFails",
-        "TestMergePatchRemoval",
-    ],
-    "touch-monitor/main_test.go": [
-        "TestDefaultKubectlUserAgentCreatesManualTouchEvent",
-        "TestNonResponseCompleteIgnored",
-        "TestExcludedServiceAccountIgnored",
-        "TestNamespaceSelectorMatchAndMismatch",
-        "TestPatchMapsToUpdate",
-        "TestDuplicateDeliveryIsIdempotent",
-        "TestAuditPopulatesCacheProviderReturnsTouched",
-        "TestManualTouchProviderReturnsUntouchedForDifferentNameOrWindow",
-        "TestManualTouchProviderKeyAcceptsRequestUIDCacheBuster",
-        "TestManualTouchProviderMalformedKeyReturnsItemError",
-        "TestRecorderDisabledCreatesNoCRsWhileCacheRecords",
-    ],
-}
-
-live_capabilities = [
-    "ExistingResourcesCheck",
-    "NameReferenceCheck",
-    "AnnotationCheck",
-    "ApprovalCheck",
-    "CheckLock",
-    "ExpressionCheck",
-    "ManualTouchCheck",
-    "ServicePodSelectorCheck",
-    "DataKeySafetyCheck",
-]
-
-missing = []
-for test_name, cases in required_suite_cases.items():
-    if test_name not in parsed:
-        missing.append(f"suite missing test {test_name}")
-        continue
-    have = set(parsed[test_name])
-    for case in cases:
-        if case not in have:
-            missing.append(f"suite {test_name} missing case {case}")
-
-for rel, tests in required_go_tests.items():
-    content = (root / rel).read_text(encoding="utf-8")
-    for test in tests:
-        if f"func {test}(" not in content:
-            missing.append(f"{rel} missing {test}")
-
-summary = {
-    "scope": "functional EarlyWatch capability parity implemented with Gatekeeper, not EarlyWatch API compatibility",
-    "static_gator_suite": str(suite_path),
-    "required_suite_cases": required_suite_cases,
-    "required_go_tests": required_go_tests,
-    "live_kind_capabilities": live_capabilities,
-    "suite_test_count": len(parsed),
-    "suite_case_count": sum(len(cases) for cases in parsed.values()),
-    "missing": missing,
-}
-artifact.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-if missing:
-    for item in missing:
-        print(item, file=sys.stderr)
-    raise SystemExit(1)
-print(f"Parity coverage catalog verified: {summary['suite_test_count']} gator tests, {summary['suite_case_count']} gator cases, {len(live_capabilities)} live capabilities")
-PY
+  ci_helper write-parity-coverage-artifact "${artifact}"
 }
 
 record_upstream_earlywatch_catalog() {
   local upstream_dir="$1"
   local artifact="${ARTIFACT_DIR}/upstream-earlywatch.json"
-  python3 - "${upstream_dir}" "${artifact}" "${EARLYWATCH_REPO_URL}" "${EARLYWATCH_UPSTREAM_COMMIT}" <<'PY'
-import json
-import pathlib
-import re
-import subprocess
-import sys
-
-upstream = pathlib.Path(sys.argv[1])
-artifact = pathlib.Path(sys.argv[2])
-repo_url = sys.argv[3]
-expected_commit = sys.argv[4]
-actual_commit = subprocess.check_output(["git", "-C", str(upstream), "rev-parse", "HEAD"], text=True).strip()
-
-def relglob(pattern):
-    return sorted(str(p.relative_to(upstream)) for p in upstream.glob(pattern) if p.is_file())
-
-e2e = []
-e2e_path = upstream / "test" / "e2e" / "e2e_test.go"
-if e2e_path.exists():
-    for line in e2e_path.read_text(encoding="utf-8").splitlines():
-        m = re.match(r"func (Test[A-Za-z0-9_]+)\(", line)
-        if m:
-            e2e.append(m.group(1))
-
-catalog = {
-    "repo_url": repo_url,
-    "expected_commit": expected_commit,
-    "actual_commit": actual_commit,
-    "deployed_by": "watchctl install --manual-touch with locally built images",
-    "functional_parity_target": "Gatekeeper implementation; upstream EarlyWatch CRD/API compatibility is intentionally out of scope",
-    "rule_type_examples": relglob("docs/examples/*.yaml"),
-    "sample_validators": relglob("config/samples/*.yaml"),
-    "demo_scripts": relglob("scripts/demo-*.sh"),
-    "install_manifests": sorted(
-        relglob("config/webhook/*.yaml")
-        + relglob("config/rbac/*.yaml")
-        + relglob("config/audit/*.yaml")
-        + relglob("pkg/install/manifests/*.yaml")
-        + relglob("pkg/install/manifests/manual-touch/*.yaml")
-    ),
-    "e2e_tests": e2e,
-}
-artifact.write_text(json.dumps(catalog, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-if actual_commit != expected_commit:
-    raise SystemExit(f"upstream EarlyWatch commit mismatch: got {actual_commit}, expected {expected_commit}")
-PY
+  ci_helper record-upstream-earlywatch-catalog "${upstream_dir}" "${artifact}" "${EARLYWATCH_REPO_URL}" "${EARLYWATCH_UPSTREAM_COMMIT}"
 }
 
 deploy_upstream_earlywatch() {
@@ -441,29 +226,7 @@ verify_gatekeeper_helm_release() {
   run helm -n gatekeeper-system list --filter '^gatekeeper$' -o json >"${release_json}"
   run helm show chart gatekeeper/gatekeeper --version "${GATEKEEPER_CHART_VERSION}" >"${chart_yaml}"
 
-  python3 - "${release_json}" "${summary_json}" "${GATEKEEPER_CHART_VERSION}" <<'PY'
-import json
-import sys
-
-release_path, summary_path, expected = sys.argv[1:4]
-releases = json.load(open(release_path, encoding="utf-8"))
-if not releases:
-    raise SystemExit("Gatekeeper Helm release was not found")
-release = releases[0]
-chart = release.get("chart", "")
-app_version = release.get("app_version") or release.get("appVersion") or ""
-expected_chart = f"gatekeeper-{expected}"
-summary = {
-    "expected_chart_version": expected,
-    "actual_chart": chart,
-    "actual_app_version": app_version,
-}
-open(summary_path, "w", encoding="utf-8").write(json.dumps(summary, indent=2, sort_keys=True) + "\n")
-if chart != expected_chart:
-    raise SystemExit(f"Gatekeeper chart mismatch: got {chart!r}, expected {expected_chart!r}")
-if not app_version.startswith("v3.22"):
-    raise SystemExit(f"Gatekeeper appVersion {app_version!r} is not v3.22.x")
-PY
+  ci_helper verify-gatekeeper-release "${release_json}" "${summary_json}" "${GATEKEEPER_CHART_VERSION}"
 }
 
 json_patch_gatekeeper_args() {
@@ -471,52 +234,7 @@ json_patch_gatekeeper_args() {
   local patch_json="${WORK_DIR}/gatekeeper-args-patch.json"
 
   kubectl -n gatekeeper-system get deployment gatekeeper-controller-manager -o json >"${deploy_json}"
-  python3 - "${deploy_json}" "${patch_json}" <<'PY'
-import json
-import sys
-
-obj = json.load(open(sys.argv[1], encoding="utf-8"))
-containers = obj["spec"]["template"]["spec"].get("containers", [])
-if not containers:
-    raise SystemExit("gatekeeper deployment has no containers")
-
-idx = 0
-for i, container in enumerate(containers):
-    if container.get("name") == "manager":
-        idx = i
-        break
-
-args = list(containers[idx].get("args", []))
-flag_names = {
-    "--enable-external-data",
-    "--external-data-provider-response-cache-ttl",
-}
-
-new_args = []
-skip_next = False
-for arg in args:
-    if skip_next:
-        skip_next = False
-        continue
-    name = arg.split("=", 1)[0]
-    if name in flag_names:
-        if "=" not in arg and name == "--external-data-provider-response-cache-ttl":
-            skip_next = True
-        continue
-    new_args.append(arg)
-
-new_args.extend([
-    "--enable-external-data=true",
-    "--external-data-provider-response-cache-ttl=0s",
-])
-
-op = "replace" if "args" in containers[idx] else "add"
-json.dump([{
-    "op": op,
-    "path": f"/spec/template/spec/containers/{idx}/args",
-    "value": new_args,
-}], open(sys.argv[2], "w", encoding="utf-8"))
-PY
+  ci_helper gatekeeper-args-patch "${deploy_json}" "${patch_json}"
 
   run kubectl -n gatekeeper-system patch deployment gatekeeper-controller-manager --type=json --patch-file "${patch_json}"
   run kubectl -n gatekeeper-system rollout status deployment/gatekeeper-controller-manager --timeout=180s
@@ -533,25 +251,7 @@ ensure_gatekeeper_delete_webhook() {
   local vwc_json="${WORK_DIR}/gatekeeper-vwc.json"
   local patch_json="${WORK_DIR}/gatekeeper-vwc-patch.json"
   kubectl get "${vwc}" -o json >"${vwc_json}"
-  python3 - "${vwc_json}" "${patch_json}" <<'PY'
-import json
-import sys
-
-obj = json.load(open(sys.argv[1], encoding="utf-8"))
-patches = []
-for wi, webhook in enumerate(obj.get("webhooks", [])):
-    for ri, rule in enumerate(webhook.get("rules", [])):
-        ops = list(rule.get("operations", []))
-        if "*" in ops or "DELETE" in ops:
-            continue
-        # Preserve the chart's operation order and append DELETE explicitly.
-        patches.append({
-            "op": "replace",
-            "path": f"/webhooks/{wi}/rules/{ri}/operations",
-            "value": ops + ["DELETE"],
-        })
-json.dump(patches, open(sys.argv[2], "w", encoding="utf-8"))
-PY
+  ci_helper gatekeeper-vwc-patch "${vwc_json}" "${patch_json}"
 
   if [[ "$(cat "${patch_json}")" != "[]" ]]; then
     run kubectl patch "${vwc}" --type=json --patch-file "${patch_json}"
@@ -733,29 +433,7 @@ apply_stack_twice() {
   run kubectl patch provider.externaldata.gatekeeper.sh manual-touch-provider --type=merge \
     -p "{\"spec\":{\"caBundle\":\"${ca_bundle}\"}}"
 
-  python3 - "${WORK_DIR}/approval-public.pem" "${WORK_DIR}/approval-constraint-patch.json" <<'PY'
-import json
-import sys
-
-public_key = open(sys.argv[1], encoding="utf-8").read()
-patch = {
-    "spec": {
-        "match": {
-            "kinds": [
-                {
-                    "apiGroups": [""],
-                    "kinds": ["ConfigMap"],
-                }
-            ],
-            "namespaces": ["ci-approval"],
-        },
-        "parameters": {
-            "publicKey": public_key,
-        },
-    },
-}
-json.dump(patch, open(sys.argv[2], "w", encoding="utf-8"))
-PY
+  ci_helper approval-constraint-patch "${WORK_DIR}/approval-public.pem" "${WORK_DIR}/approval-constraint-patch.json"
   run kubectl patch ewapprovalcheck.constraints.gatekeeper.sh require-approval-signature \
     --type=merge --patch-file "${WORK_DIR}/approval-constraint-patch.json"
 
@@ -1044,38 +722,7 @@ start_manual_touch_port_forward() {
 
 post_manual_touch_audit_event() {
   local payload="${WORK_DIR}/manual-touch-audit.json"
-  python3 - "${payload}" "${MANUAL_TOUCH_USER_AGENT}" <<'PY'
-import datetime
-import json
-import sys
-
-payload_path, user_agent = sys.argv[1], sys.argv[2]
-now = datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
-payload = {
-    "items": [
-        {
-            "auditID": "ci-manual-touch-0001",
-            "stage": "ResponseComplete",
-            "verb": "patch",
-            "user": {
-                "username": "ci-user",
-                "groups": ["system:authenticated"],
-            },
-            "userAgent": user_agent,
-            "sourceIPs": ["127.0.0.1"],
-            "objectRef": {
-                "resource": "deployments",
-                "namespace": "ci-manual",
-                "name": "touched",
-                "apiGroup": "apps",
-                "apiVersion": "v1",
-            },
-            "requestReceivedTimestamp": now,
-        }
-    ]
-}
-json.dump(payload, open(payload_path, "w", encoding="utf-8"))
-PY
+  ci_helper manual-touch-audit-event "${payload}" "${MANUAL_TOUCH_USER_AGENT}"
   run curl -skSf -X POST https://127.0.0.1:18443/audit \
     -H 'Content-Type: application/json' \
     --data-binary "@${payload}"
@@ -1187,6 +834,7 @@ run_live_assertions() {
 
 main() {
   require_commands
+  build_ci_helper
   create_kind_cluster
   write_parity_coverage_artifact
   deploy_upstream_earlywatch

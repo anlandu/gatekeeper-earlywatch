@@ -19,6 +19,9 @@ kind: ConstraintTemplate
 metadata:
   name: ewdatakeysafetycheck
   annotations:
+    metadata.gatekeeper.sh/title: "Data Key Safety Check"
+    metadata.gatekeeper.sh/version: "1.0.0"
+    description: "Prevents removing ConfigMap or Secret data keys that are still referenced by Pods."
     # Inventory dependency varies by `resources[]`. Add each referrer kind to
     # 00-config-sync.yaml. Common referrer:
     metadata.gatekeeper.sh/requires-sync-data: |

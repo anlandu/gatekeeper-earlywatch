@@ -16,6 +16,10 @@ apiVersion: templates.gatekeeper.sh/v1
 kind: ConstraintTemplate
 metadata:
   name: ewexpressioncheck
+  annotations:
+    metadata.gatekeeper.sh/title: "Expression Check"
+    metadata.gatekeeper.sh/version: "1.0.0"
+    description: "Evaluates structured operation, namespace, and name predicates against admission requests."
 spec:
   crd:
     spec:

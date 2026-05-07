@@ -7,6 +7,9 @@ kind: ConstraintTemplate
 metadata:
   name: ewservicepodselectorcheck
   annotations:
+    metadata.gatekeeper.sh/title: "Service Pod Selector Check"
+    metadata.gatekeeper.sh/version: "1.0.0"
+    description: "Prevents pod label changes or deletions that would break existing Service pod selectors."
     metadata.gatekeeper.sh/requires-sync-data: |
       "[[{\"groups\":[\"\"], \"versions\":[\"v1\"], \"kinds\":[\"Pod\"]}]]"
 spec:
