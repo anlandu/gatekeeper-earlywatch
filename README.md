@@ -15,7 +15,7 @@ audit, dryrun, metrics, and testing pipeline.
 
 ```
 library/gatekeeper-earlywatch/  Gatekeeper Library layout with templates, default constraints, and Config sync
-catalog.yaml                    Gatekeeper PolicyCatalog for browsing the library templates
+catalog.yaml                    Gatekeeper PolicyCatalog with an EarlyWatch default policy bundle
 provider/                       External-data provider for ApprovalCheck (Go service)
 touch-monitor/                  Audit-webhook service + ManualTouch external-data provider
 tests/                          gator verify suite + AdmissionReview/inventory fixtures
@@ -137,28 +137,42 @@ Two important operator notes:
 ## Policy catalog
 
 This repository includes a Gatekeeper `PolicyCatalog` in [`catalog.yaml`](catalog.yaml)
-so Gatekeeper tooling can discover the available EarlyWatch parity templates.
+so Gatekeeper tooling can discover the EarlyWatch parity templates and install
+the preconfigured `earlywatch-default` policy bundle.
 
-To install the cataloged `ConstraintTemplate`s with `gator`:
+To install the cataloged `ConstraintTemplate`s and default `Constraint`s with
+`gator`:
 
 ```bash
 export GATOR_CATALOG_URL=https://raw.githubusercontent.com/sozercan/gatekeeper-earlywatch/main/catalog.yaml
 gator policy update
-gator policy install \
-  ewexistingresources \
-  ewnamereferencecheck \
-  ewannotationcheck \
-  ewapprovalcheck \
-  ewchecklock \
-  ewexpressioncheck \
-  ewmanualtouchcheck \
-  ewservicepodselectorcheck \
-  ewdatakeysafetycheck
+gator policy install --bundle earlywatch-default
 ```
 
+You can override the default constraints' enforcement action during bundle
+installation:
+
+```bash
+gator policy install --bundle earlywatch-default --enforcement-action=warn
+```
+
+The bundle includes two catalog-only aliases, `ewexistingresources-static` and
+`ewexpressioncheck-regex`, so Gator can install multiple default constraints for
+templates that have more than one default constraint.
+
 The installable policy templates live in the Gatekeeper Library-compatible layout
-under [`library/gatekeeper-earlywatch/`](library/gatekeeper-earlywatch/). Use the
-root [`kustomization.yaml`](kustomization.yaml) when you want the complete default
-parity stack, including default constraints, inventory sync, and external-data
-providers; copy individual templates and constraints from `library/` when you
-need a narrower rollout.
+under [`library/gatekeeper-earlywatch/`](library/gatekeeper-earlywatch/). Gator
+policy bundles install policy objects only: `ConstraintTemplate`s and the
+bundle-specific `Constraint`s. They do **not** install the non-policy runtime
+resources required by the full EarlyWatch parity stack, such as Gatekeeper
+inventory sync `Config`, external-data `Provider`s, provider `Deployment`s and
+Services, or touch-monitor resources. Use the root
+[`kustomization.yaml`](kustomization.yaml) when you want the complete default
+parity stack:
+
+```bash
+kubectl apply -k .
+```
+
+Copy individual templates and constraints from `library/` when you need a
+narrower rollout.
