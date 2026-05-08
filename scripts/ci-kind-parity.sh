@@ -3,8 +3,8 @@
 #
 # The script intentionally exercises the same paths a repository consumer will
 # use: build the local external-data providers, install Gatekeeper in kind,
-# apply this kustomization twice (ConstraintTemplate CRDs are asynchronous), and
-# verify live admission with server-side dry-runs.
+# install the default policy bundle with gator, and verify live admission with
+# server-side dry-runs.
 set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -103,7 +103,7 @@ trap cleanup EXIT
 
 require_commands() {
   local missing=0
-  for cmd in docker git go kind kubectl helm openssl curl; do
+  for cmd in docker git go kind kubectl helm openssl curl gator python3; do
     if ! command -v "${cmd}" >/dev/null 2>&1; then
       printf 'missing required command: %s\n' "${cmd}" >&2
       missing=1
@@ -405,15 +405,73 @@ sign_message() {
     -sigopt rsa_padding_mode:pss -sigopt rsa_pss_saltlen:-1 | base64 | tr -d '\n'
 }
 
-apply_stack_twice() {
-  log "Applying repository kustomization (first pass; constraints may race freshly-created CRDs)"
-  kubectl apply -k . >"${ARTIFACT_DIR}/first-apply.log" 2>&1 || true
-  cat "${ARTIFACT_DIR}/first-apply.log"
+write_local_gator_catalog() {
+  local local_catalog="${WORK_DIR}/catalog.yaml"
 
-  run kubectl wait --for=jsonpath='{.status.created}'=true constrainttemplates.templates.gatekeeper.sh --all --timeout=180s
+  # catalog.yaml is committed with raw.githubusercontent.com URLs so releases
+  # can be installed remotely. CI must exercise the checked-out PR contents, so
+  # rewrite those content URLs to file:// URLs in an isolated temporary catalog.
+  python3 - "${ROOT}" "${local_catalog}" <<'PY'
+from pathlib import Path
+import sys
 
-  log "Applying repository kustomization (second pass after ConstraintTemplate CRDs exist)"
-  run kubectl apply -k .
+root = Path(sys.argv[1]).resolve()
+out = Path(sys.argv[2])
+source = root / "catalog.yaml"
+base = "https://raw.githubusercontent.com/sozercan/gatekeeper-earlywatch/main"
+root_uri = root.as_uri()
+
+text = source.read_text()
+rewritten = text.replace(base, root_uri)
+if rewritten == text:
+    raise SystemExit(f"did not find expected catalog base URL {base!r} in {source}")
+if "https://raw.githubusercontent.com/sozercan/gatekeeper-earlywatch" in rewritten:
+    raise SystemExit("catalog still contains remote gatekeeper-earlywatch raw URLs after rewrite")
+
+out.write_text(rewritten)
+PY
+
+  printf '%s\n' "${local_catalog}"
+}
+
+file_uri() {
+  python3 - "$1" <<'PY'
+from pathlib import Path
+import sys
+
+print(Path(sys.argv[1]).resolve().as_uri())
+PY
+}
+
+install_stack() {
+  log "Applying EarlyWatch runtime manifests (non-policy resources)"
+  kubectl apply \
+    -f library/gatekeeper-earlywatch/config-sync.yaml \
+    -f library/gatekeeper-earlywatch/manual-touch-check/provider.yaml \
+    -f provider/manifests/deployment.yaml \
+    -f provider/manifests/provider.yaml \
+    -f provider/manifests/hardening.yaml \
+    -f touch-monitor/manifests/audit-monitor.yaml \
+    >"${ARTIFACT_DIR}/runtime-apply.log" 2>&1
+  cat "${ARTIFACT_DIR}/runtime-apply.log"
+
+  local local_catalog catalog_uri gator_home
+  local_catalog="$(write_local_gator_catalog)"
+  catalog_uri="$(file_uri "${local_catalog}")"
+  gator_home="${WORK_DIR}/gator"
+  mkdir -p "${gator_home}"
+
+  log "Refreshing gator policy catalog from local checkout"
+  GATOR_HOME="${gator_home}" GATOR_CATALOG_URL="${catalog_uri}" \
+    gator policy update >"${ARTIFACT_DIR}/gator-policy-update.log" 2>&1
+  cat "${ARTIFACT_DIR}/gator-policy-update.log"
+
+  log "Installing EarlyWatch default policy bundle with gator"
+  GATOR_HOME="${gator_home}" GATOR_CATALOG_URL="${catalog_uri}" \
+    gator policy install --bundle earlywatch-default \
+    >"${ARTIFACT_DIR}/gator-policy-install.log" 2>&1
+  cat "${ARTIFACT_DIR}/gator-policy-install.log"
+
   run kubectl wait --for=jsonpath='{.status.created}'=true constrainttemplates.templates.gatekeeper.sh --all --timeout=180s
 
   # Required image overrides for the locally-built provider images. The base
@@ -842,7 +900,7 @@ main() {
   install_gatekeeper
   generate_provider_certs
   generate_approval_keypair
-  apply_stack_twice
+  install_stack
   run_live_assertions
   log "CI kind parity validation completed successfully"
 }
