@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata: {name: svc}
+spec:
+  selector: {app: kept}
+  ports: [{port: 80}]
+---
+apiVersion: v1
+kind: Pod
+metadata: {name: kept-pod, labels: {app: kept}}
+spec:
+  restartPolicy: Never
+  containers: [{name: c, image: nginx:alpine}]

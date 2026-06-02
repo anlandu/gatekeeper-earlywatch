@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata: {name: bf-svc-bad}
+spec:
+  selector: {app: x}
+  ports: [{port: 80}]
+---
+apiVersion: v1
+kind: Pod
+metadata: {name: bf-prod-pod, labels: {tier: production}}
+spec:
+  restartPolicy: Never
+  containers: [{name: c, image: nginx:alpine}]

@@ -1,0 +1,11 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: unlocked-gf}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: unlocked-gf}}
+  template:
+    metadata: {labels: {app: unlocked-gf}}
+    spec:
+      containers:
+        - {name: c, image: nginx:alpine}

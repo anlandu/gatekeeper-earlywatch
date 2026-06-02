@@ -1,0 +1,17 @@
+# bad: a Deployment carrying earlywatch.io/lock with an updated spec.replicas.
+# Since CheckLock fires on UPDATE, demo.sh first applies this manifest (allowed,
+# initial create), then issues kubectl scale to trigger the UPDATE deny.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: locked-gf
+  annotations:
+    earlywatch.io/lock: "true"
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: locked-gf}}
+  template:
+    metadata: {labels: {app: locked-gf}}
+    spec:
+      containers:
+        - {name: c, image: nginx:alpine}

@@ -1,5 +1,5 @@
 apiVersion: constraints.gatekeeper.sh/v1beta1
-kind: EWExistingResources
+kind: EWExistingResourcesField
 metadata:
   name: service-must-have-no-matching-pods
 spec:
@@ -9,9 +9,3 @@ spec:
         kinds: ["Service"]
   parameters:
     operations: ["DELETE"]
-    existingResources:
-      apiGroup: ""
-      version: v1
-      kind: Pod
-      labelSelectorFromField: "spec.selector"
-      sameNamespace: true

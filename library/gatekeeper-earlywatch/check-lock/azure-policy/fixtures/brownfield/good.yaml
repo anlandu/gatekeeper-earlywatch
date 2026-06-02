@@ -1,0 +1,11 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: unlocked-bf}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: unlocked-bf}}
+  template:
+    metadata: {labels: {app: unlocked-bf}}
+    spec:
+      containers:
+        - {name: c, image: nginx:alpine}

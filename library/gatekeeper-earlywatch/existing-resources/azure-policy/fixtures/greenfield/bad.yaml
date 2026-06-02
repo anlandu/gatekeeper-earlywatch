@@ -1,0 +1,15 @@
+# To trigger: Service with spec.selector matching a Pod in the same NS, then
+# demo.sh kubectl-deletes the Service.
+apiVersion: v1
+kind: Service
+metadata: {name: svc-bad}
+spec:
+  selector: {app: webx}
+  ports: [{port: 80}]
+---
+apiVersion: v1
+kind: Pod
+metadata: {name: web-pod, labels: {app: webx}}
+spec:
+  restartPolicy: Never
+  containers: [{name: c, image: nginx:alpine}]

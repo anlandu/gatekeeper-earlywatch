@@ -1,0 +1,10 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: touched}
+spec:
+  replicas: 2
+  selector: {matchLabels: {app: touched}}
+  template:
+    metadata: {labels: {app: touched}}
+    spec:
+      containers: [{name: c, image: nginx:alpine}]

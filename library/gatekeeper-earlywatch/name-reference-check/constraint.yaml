@@ -10,10 +10,3 @@ spec:
   parameters:
     sameNamespace: true
     operations: ["DELETE"]
-    resources:
-      - apiGroup: apps
-        version: v1
-        kind: Deployment
-        nameFields:
-          - spec.template.spec.volumes.configMap.name
-          - spec.template.spec.containers.envFrom.configMapRef.name

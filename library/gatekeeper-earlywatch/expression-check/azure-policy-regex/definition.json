@@ -1,0 +1,41 @@
+{
+  "properties": {
+    "displayName": "EarlyWatch: ExpressionCheck (regex) - block delete of critical resources",
+    "policyType": "Custom",
+    "mode": "Microsoft.Kubernetes.Data",
+    "description": "CEL-based: denies DELETE when namespace ~/^prod-/ OR name contains 'critical'.",
+    "metadata": { "category": "Kubernetes" },
+    "parameters": {
+      "effect": {
+        "type": "String",
+        "allowedValues": ["audit", "deny", "disabled"],
+        "defaultValue": "deny"
+      },
+      "excludedNamespaces": { "type": "Array", "defaultValue": ["kube-system", "gatekeeper-system", "azure-arc", "azure-extensions-usage-system"] },
+      "namespaces": { "type": "Array", "defaultValue": [] },
+      "labelSelector": { "type": "Object", "defaultValue": {} }
+    },
+    "policyRule": {
+      "if": {
+        "field": "type",
+        "in": [
+          "Microsoft.ContainerService/managedClusters",
+          "Microsoft.Kubernetes/connectedClusters",
+          "AKS Engine"
+        ]
+      },
+      "then": {
+        "effect": "[parameters('effect')]",
+        "details": {
+          "templateInfo": { "sourceType": "Base64Encoded", "content": "IyBTZWNvbmQgZXhhbXBsZTogYSBDRUwgcmVnZXggcHJlZGljYXRlLgojCiMgRWFybHlXYXRjaCdzIEV4cHJlc3Npb25DaGVjayBncmFtbWFyIGlzIGBmaWVsZCA9PSAndmFsdWUnYCBhbmQgZG9lcyBub3QKIyBpbmNsdWRlIHJlZ2V4LCBzbyB0aGlzIHRlbXBsYXRlIGlzICptb3JlKiBjYXBhYmxlIHRoYW4gRWFybHlXYXRjaCDigJQgaXQKIyBpbGx1c3RyYXRlcyB0aGUgdXBzaWRlIG9mIHRyYW5zbGF0aW5nIGVhY2ggcnVsZSB0byBkZWRpY2F0ZWQgQ0VMOiB5b3UgZ2V0CiMgdGhlIGZ1bGwgQ0VMIHN0YW5kYXJkIGxpYnJhcnkgKGhlcmUsIGBtYXRjaGVzYCkgZm9yIGZyZWUsIGluIGEgb25lLWxpbmVyLgojCiMgRGVueSBERUxFVEUgd2hlbiB0aGUgbmFtZXNwYWNlIG1hdGNoZXMgYF5wcm9kLipgIE9SIHRoZSByZXNvdXJjZSBuYW1lCiMgbWF0Y2hlcyBgXmNyaXRpY2FsLS4qYC4KYXBpVmVyc2lvbjogdGVtcGxhdGVzLmdhdGVrZWVwZXIuc2gvdjEKa2luZDogQ29uc3RyYWludFRlbXBsYXRlCm1ldGFkYXRhOgogIG5hbWU6IGV3YmxvY2tkZWxldGVjcml0aWNhbGlucHJvZAogIGFubm90YXRpb25zOgogICAgbWV0YWRhdGEuZ2F0ZWtlZXBlci5zaC90aXRsZTogIkJsb2NrIERFTEVURSBvZiBjcml0aWNhbC0qIGluIHByb2QqIgogICAgbWV0YWRhdGEuZ2F0ZWtlZXBlci5zaC92ZXJzaW9uOiAiMS4wLjAiCiAgICBkZXNjcmlwdGlvbjogIkRlbmllcyBERUxFVEUgcmVxdWVzdHMgZm9yIGNyaXRpY2FsLSogcmVzb3VyY2VzIGluIHByb2QqIG5hbWVzcGFjZXMuIgpzcGVjOgogIGNyZDoKICAgIHNwZWM6CiAgICAgIG5hbWVzOgogICAgICAgIGtpbmQ6IEVXQmxvY2tEZWxldGVDcml0aWNhbEluUHJvZAogIHRhcmdldHM6CiAgICAtIHRhcmdldDogYWRtaXNzaW9uLms4cy5nYXRla2VlcGVyLnNoCiAgICAgIGNvZGU6CiAgICAgICAgLSBlbmdpbmU6IFJlZ28KICAgICAgICAgIHNvdXJjZToKICAgICAgICAgICAgcmVnbzogfAogICAgICAgICAgICAgIHBhY2thZ2UgZXdibG9ja2RlbGV0ZWNyaXRpY2FsaW5wcm9kCgogICAgICAgICAgICAgIHZpb2xhdGlvblt7Im1zZyI6IG1zZ31dIHsKICAgICAgICAgICAgICAgIGlucHV0LnJldmlldy5vcGVyYXRpb24gPT0gIkRFTEVURSIKICAgICAgICAgICAgICAgIHJlZ2V4Lm1hdGNoKCJecHJvZC4qIiwgaW5wdXQucmV2aWV3Lm5hbWVzcGFjZSkKICAgICAgICAgICAgICAgIG1zZyA6PSAiRGVsZXRpb24gb2YgY3JpdGljYWwtKiByZXNvdXJjZXMgb3IgcmVzb3VyY2VzIGluIHByb2QqIG5hbWVzcGFjZXMgaXMgbm90IHBlcm1pdHRlZC4iCiAgICAgICAgICAgICAgfQoKICAgICAgICAgICAgICB2aW9sYXRpb25beyJtc2ciOiBtc2d9XSB7CiAgICAgICAgICAgICAgICBpbnB1dC5yZXZpZXcub3BlcmF0aW9uID09ICJERUxFVEUiCiAgICAgICAgICAgICAgICByZWdleC5tYXRjaCgiXmNyaXRpY2FsLS4qIiwgaW5wdXQucmV2aWV3Lm5hbWUpCiAgICAgICAgICAgICAgICBtc2cgOj0gIkRlbGV0aW9uIG9mIGNyaXRpY2FsLSogcmVzb3VyY2VzIG9yIHJlc291cmNlcyBpbiBwcm9kKiBuYW1lc3BhY2VzIGlzIG5vdCBwZXJtaXR0ZWQuIgogICAgICAgICAgICAgIH0KICAgICAgICAtIGVuZ2luZTogSzhzTmF0aXZlVmFsaWRhdGlvbgogICAgICAgICAgc291cmNlOgogICAgICAgICAgICB2YWxpZGF0aW9uczoKICAgICAgICAgICAgICAtIGV4cHJlc3Npb246IHwKICAgICAgICAgICAgICAgICAgIShyZXF1ZXN0Lm9wZXJhdGlvbiA9PSAnREVMRVRFJyAmJgogICAgICAgICAgICAgICAgICAgIChyZXF1ZXN0Lm5hbWVzcGFjZS5tYXRjaGVzKCdecHJvZC4qJykgfHwKICAgICAgICAgICAgICAgICAgICAgcmVxdWVzdC5uYW1lLm1hdGNoZXMoJ15jcml0aWNhbC0uKicpKSkKICAgICAgICAgICAgICAgIG1lc3NhZ2VFeHByZXNzaW9uOiB8CiAgICAgICAgICAgICAgICAgICJEZWxldGlvbiBvZiBjcml0aWNhbC0qIHJlc291cmNlcyBvciByZXNvdXJjZXMgaW4gcHJvZCogbmFtZXNwYWNlcyBpcyBub3QgcGVybWl0dGVkLiIK" },
+          "apiGroups": [""],
+          "kinds": ["ConfigMap"],
+          "namespaces": "[parameters('namespaces')]",
+          "excludedNamespaces": "[parameters('excludedNamespaces')]",
+          "labelSelector": "[parameters('labelSelector')]",
+          "values": {}
+        }
+      }
+    }
+  }
+}

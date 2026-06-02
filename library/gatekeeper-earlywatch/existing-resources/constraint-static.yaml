@@ -1,5 +1,5 @@
 apiVersion: constraints.gatekeeper.sh/v1beta1
-kind: EWExistingResources
+kind: EWExistingResourcesStatic
 metadata:
   name: service-static-selector-in
 spec:
@@ -9,13 +9,3 @@ spec:
         kinds: ["Service"]
   parameters:
     operations: ["DELETE"]
-    existingResources:
-      apiGroup: ""
-      version: v1
-      kind: Pod
-      sameNamespace: true
-      labelSelector:
-        matchExpressions:
-          - key: tier
-            operator: In
-            values: ["production", "staging"]

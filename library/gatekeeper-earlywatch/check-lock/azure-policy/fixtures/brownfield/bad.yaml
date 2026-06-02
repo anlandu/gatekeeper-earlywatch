@@ -1,0 +1,14 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: locked-bf
+  annotations:
+    earlywatch.io/lock: "true"
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: locked-bf}}
+  template:
+    metadata: {labels: {app: locked-bf}}
+    spec:
+      containers:
+        - {name: c, image: nginx:alpine}

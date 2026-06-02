@@ -1,0 +1,81 @@
+{
+  "properties": {
+    "displayName": "EarlyWatch: ServicePodSelectorCheck - protect Service pod targeting",
+    "policyType": "Custom",
+    "mode": "Microsoft.Kubernetes.Data",
+    "description": "Denies Service UPDATEs that would orphan all matched Pods.",
+    "metadata": {
+      "category": "Kubernetes"
+    },
+    "parameters": {
+      "effect": {
+        "type": "String",
+        "metadata": {
+          "displayName": "Effect",
+          "description": "deny | audit | disabled"
+        },
+        "allowedValues": [
+          "audit",
+          "deny",
+          "disabled"
+        ],
+        "defaultValue": "deny"
+      },
+      "excludedNamespaces": {
+        "type": "Array",
+        "metadata": {
+          "displayName": "Namespaces to exclude"
+        },
+        "defaultValue": [
+          "kube-system",
+          "gatekeeper-system",
+          "azure-arc",
+          "azure-extensions-usage-system"
+        ]
+      },
+      "namespaces": {
+        "type": "Array",
+        "metadata": {
+          "displayName": "Namespaces to include (empty = all)"
+        },
+        "defaultValue": []
+      },
+      "labelSelector": {
+        "type": "Object",
+        "metadata": {
+          "displayName": "Kubernetes label selector"
+        },
+        "defaultValue": {}
+      }
+    },
+    "policyRule": {
+      "if": {
+        "field": "type",
+        "in": [
+          "Microsoft.ContainerService/managedClusters",
+          "Microsoft.Kubernetes/connectedClusters",
+          "AKS Engine"
+        ]
+      },
+      "then": {
+        "effect": "[parameters('effect')]",
+        "details": {
+          "templateInfo": {
+            "sourceType": "Base64Encoded",
+            "content": "IyBFYXJseVdhdGNoIFNlcnZpY2VQb2RTZWxlY3RvckNoZWNrIC0+IEdhdGVrZWVwZXIgcmVmZXJlbnRpYWwgY29uc3RyYWludAojIERlbmllcyBVUERBVEUgb2YgYSBTZXJ2aWNlIHdoZW4gYSBub24taGVhZGxlc3Mgb2xkIHNlbGVjdG9yIHRoYXQgcHJldmlvdXNseQojIG1hdGNoZWQgUG9kcyBpcyBjaGFuZ2VkIHRvIGEgc2VsZWN0b3IgbWF0Y2hpbmcgemVybyBQb2RzLgojIFJlcXVpcmVzIFBvZHMgc3luY2VkIGludG8gZGF0YS5pbnZlbnRvcnkuCmFwaVZlcnNpb246IHRlbXBsYXRlcy5nYXRla2VlcGVyLnNoL3YxCmtpbmQ6IENvbnN0cmFpbnRUZW1wbGF0ZQptZXRhZGF0YToKICBuYW1lOiBld3NlcnZpY2Vwb2RzZWxlY3RvcmNoZWNrCiAgYW5ub3RhdGlvbnM6CiAgICBtZXRhZGF0YS5nYXRla2VlcGVyLnNoL3RpdGxlOiAiU2VydmljZSBQb2QgU2VsZWN0b3IgQ2hlY2siCiAgICBtZXRhZGF0YS5nYXRla2VlcGVyLnNoL3ZlcnNpb246ICIxLjAuMCIKICAgIGRlc2NyaXB0aW9uOiAiUHJldmVudHMgcG9kIGxhYmVsIGNoYW5nZXMgb3IgZGVsZXRpb25zIHRoYXQgd291bGQgYnJlYWsgZXhpc3RpbmcgU2VydmljZSBwb2Qgc2VsZWN0b3JzLiIKICAgIGF6dXJlLXBvbGljeS5henVyZS5jb20vcmVxdWlyZXMtc3luYy1kYXRhOiB8CiAgICAgIFtbeyJncm91cHMiOlsiIl0sICJ2ZXJzaW9ucyI6WyJ2MSJdLCAia2luZHMiOlsiUG9kIl19XV0Kc3BlYzoKICBjcmQ6CiAgICBzcGVjOgogICAgICBuYW1lczoKICAgICAgICBraW5kOiBFV1NlcnZpY2VQb2RTZWxlY3RvckNoZWNrCiAgdGFyZ2V0czoKICAgIC0gdGFyZ2V0OiBhZG1pc3Npb24uazhzLmdhdGVrZWVwZXIuc2gKICAgICAgY29kZToKICAgICAgICAtIGVuZ2luZTogUmVnbwogICAgICAgICAgc291cmNlOgogICAgICAgICAgICByZWdvOiB8CiAgICAgICAgICAgICAgcGFja2FnZSBld3NlcnZpY2Vwb2RzZWxlY3RvcmNoZWNrCgogICAgICAgICAgICAgIGltcG9ydCBmdXR1cmUua2V5d29yZHMuZXZlcnkKCiAgICAgICAgICAgICAgbWlzc2luZ19zZWxlY3RvciA6PSB7Il9fZWFybHl3YXRjaF9taXNzaW5nX3NlbGVjdG9yIjogdHJ1ZX0KCiAgICAgICAgICAgICAgbnMgOj0gaW5wdXQucmV2aWV3Lm9iamVjdC5tZXRhZGF0YS5uYW1lc3BhY2UKICAgICAgICAgICAgICBvbGRfc2VsZWN0b3IgOj0gb2JqZWN0LmdldChvYmplY3QuZ2V0KGlucHV0LnJldmlldy5vbGRPYmplY3QsICJzcGVjIiwge30pLCAic2VsZWN0b3IiLCBtaXNzaW5nX3NlbGVjdG9yKQogICAgICAgICAgICAgIG5ld19zZWxlY3RvciA6PSBvYmplY3QuZ2V0KG9iamVjdC5nZXQoaW5wdXQucmV2aWV3Lm9iamVjdCwgInNwZWMiLCB7fSksICJzZWxlY3RvciIsIG1pc3Npbmdfc2VsZWN0b3IpCgogICAgICAgICAgICAgIGhhc19zZWxlY3RvcihzZWxlY3RvcikgewogICAgICAgICAgICAgICAgc2VsZWN0b3IgIT0gbWlzc2luZ19zZWxlY3RvcgogICAgICAgICAgICAgIH0KCiAgICAgICAgICAgICAgcG9kX21hdGNoZXNfc2VsZWN0b3IocG9kLCBzZWxlY3RvcikgewogICAgICAgICAgICAgICAgIyBVcHN0cmVhbSBFYXJseVdhdGNoIGRpc3Rpbmd1aXNoZXMgYWJzZW50L25pbCBzZWxlY3RvcnMgZnJvbSBhbgogICAgICAgICAgICAgICAgIyBlbXB0eSBzZWxlY3RvciBtYXAuICBBbiBhYnNlbnQgc2VsZWN0b3Igc2VsZWN0cyBubyBQb2RzLCB3aGlsZQogICAgICAgICAgICAgICAgIyBhbiBlbXB0eSBtYXAgaXMgY29udmVydGVkIHRvIGxhYmVscy5FdmVyeXRoaW5nKCkgYW5kIG1hdGNoZXMKICAgICAgICAgICAgICAgICMgYW55IFBvZCBpbiB0aGUgU2VydmljZSBuYW1lc3BhY2UuCiAgICAgICAgICAgICAgICBldmVyeSBrLCB2IGluIHNlbGVjdG9yIHsKICAgICAgICAgICAgICAgICAgb2JqZWN0LmdldChwb2QubWV0YWRhdGEsICJsYWJlbHMiLCB7fSlba10gPT0gdgogICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgIH0KCiAgICAgICAgICAgICAgc2VsZWN0b3JfbWF0Y2hlc19hbnlfcG9kKHNlbGVjdG9yKSB7CiAgICAgICAgICAgICAgICBoYXNfc2VsZWN0b3Ioc2VsZWN0b3IpCiAgICAgICAgICAgICAgICBzb21lIG5hbWUKICAgICAgICAgICAgICAgIHBvZCA6PSBkYXRhLmludmVudG9yeS5uYW1lc3BhY2VbbnNdWyJ2MSJdWyJQb2QiXVtuYW1lXQogICAgICAgICAgICAgICAgcG9kX21hdGNoZXNfc2VsZWN0b3IocG9kLCBzZWxlY3RvcikKICAgICAgICAgICAgICB9CgogICAgICAgICAgICAgIGhlYWRsZXNzX3NlcnZpY2UgewogICAgICAgICAgICAgICAgIyBUaGUgdXBzdHJlYW0gd2ViaG9vayBleGVtcHRzIFNlcnZpY2VzIHRoYXQgd2VyZSBhbHJlYWR5CiAgICAgICAgICAgICAgICAjIGhlYWRsZXNzIGJlZm9yZSB0aGUgdXBkYXRlLgogICAgICAgICAgICAgICAgaW5wdXQucmV2aWV3Lm9sZE9iamVjdC5zcGVjLmNsdXN0ZXJJUCA9PSAiTm9uZSIKICAgICAgICAgICAgICB9CgogICAgICAgICAgICAgIHZpb2xhdGlvblt7Im1zZyI6IG1zZ31dIHsKICAgICAgICAgICAgICAgIGlucHV0LnJldmlldy5raW5kLmtpbmQgPT0gIlNlcnZpY2UiCiAgICAgICAgICAgICAgICBpbnB1dC5yZXZpZXcub3BlcmF0aW9uID09ICJVUERBVEUiCiAgICAgICAgICAgICAgICBub3QgaGVhZGxlc3Nfc2VydmljZQogICAgICAgICAgICAgICAgc2VsZWN0b3JfbWF0Y2hlc19hbnlfcG9kKG9sZF9zZWxlY3RvcikKICAgICAgICAgICAgICAgIG5vdCBzZWxlY3Rvcl9tYXRjaGVzX2FueV9wb2QobmV3X3NlbGVjdG9yKQogICAgICAgICAgICAgICAgbXNnIDo9IHNwcmludGYoIlNlcnZpY2UgJXEgaW4gbmFtZXNwYWNlICVxIHdvdWxkIGhhdmUgemVybyBtYXRjaGluZyBQb2RzIiwKICAgICAgICAgICAgICAgICAgW2lucHV0LnJldmlldy5vYmplY3QubWV0YWRhdGEubmFtZSwgbnNdKQogICAgICAgICAgICAgIH0K"
+          },
+          "apiGroups": [
+            ""
+          ],
+          "kinds": [
+            "Service"
+          ],
+          "namespaces": "[parameters('namespaces')]",
+          "excludedNamespaces": "[parameters('excludedNamespaces')]",
+          "labelSelector": "[parameters('labelSelector')]",
+          "values": {}
+        }
+      }
+    }
+  }
+}

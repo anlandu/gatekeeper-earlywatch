@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bf-good
+  annotations:
+    earlywatch.io/approved: "DEMO-PLACEHOLDER-SIGNATURE"
+data:
+  k: v1

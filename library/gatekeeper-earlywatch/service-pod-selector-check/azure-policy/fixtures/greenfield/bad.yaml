@@ -1,0 +1,7 @@
+# Bad: Service whose selector now matches zero Pods (was matching one).
+apiVersion: v1
+kind: Service
+metadata: {name: svc}
+spec:
+  selector: {app: gone}
+  ports: [{port: 80}]

@@ -1,0 +1,57 @@
+{
+  "properties": {
+    "displayName": "EarlyWatch: ExistingResources (field selector) - block Service delete with matching Pods",
+    "policyType": "Custom",
+    "mode": "Microsoft.Kubernetes.Data",
+    "description": "Denies Service DELETE when a Pod in the same namespace matches spec.selector.",
+    "metadata": { "category": "Kubernetes" },
+    "parameters": {
+      "effect": {
+        "type": "String",
+        "metadata": { "displayName": "Effect", "description": "deny | audit | disabled" },
+        "allowedValues": ["audit", "deny", "disabled"],
+        "defaultValue": "deny"
+      },
+      "excludedNamespaces": {
+        "type": "Array",
+        "metadata": { "displayName": "Namespaces to exclude" },
+        "defaultValue": ["kube-system", "gatekeeper-system", "azure-arc", "azure-extensions-usage-system"]
+      },
+      "namespaces": {
+        "type": "Array",
+        "metadata": { "displayName": "Namespaces to include (empty = all)" },
+        "defaultValue": []
+      },
+      "labelSelector": {
+        "type": "Object",
+        "metadata": { "displayName": "Kubernetes label selector" },
+        "defaultValue": {}
+      }
+    },
+    "policyRule": {
+      "if": {
+        "field": "type",
+        "in": [
+          "Microsoft.ContainerService/managedClusters",
+          "Microsoft.Kubernetes/connectedClusters",
+          "AKS Engine"
+        ]
+      },
+      "then": {
+        "effect": "[parameters('effect')]",
+        "details": {
+          "templateInfo": {
+            "sourceType": "Base64Encoded",
+            "content": "IyBFYXJseVdhdGNoIEV4aXN0aW5nUmVzb3VyY2VzIChmaWVsZC1zZWxlY3RvciB2YXJpYW50LCBzaW1wbGlmaWVkIGZvciBBenVyZSBQb2xpY3kgZGVtbykuCiMKIyBEZW5pZXMgREVMRVRFIG9mIGEgU2VydmljZSB3aGVuIGFueSBQb2QgaW4gdGhlIHNhbWUgbmFtZXNwYWNlIG1hdGNoZXMgdGhlCiMgU2VydmljZSdzIHNwZWMuc2VsZWN0b3IuIEhhcmRjb2RlZCBmb3Iga2luZD1Qb2QsIGd2PXYxLCBzYW1lTmFtZXNwYWNlPXRydWUuCiMgT25seSBgb3BlcmF0aW9uc2AgcmVtYWlucyBwYXJhbWV0ZXJpemVkLgphcGlWZXJzaW9uOiB0ZW1wbGF0ZXMuZ2F0ZWtlZXBlci5zaC92MQpraW5kOiBDb25zdHJhaW50VGVtcGxhdGUKbWV0YWRhdGE6CiAgbmFtZTogZXdleGlzdGluZ3Jlc291cmNlc2ZpZWxkCiAgYW5ub3RhdGlvbnM6CiAgICBtZXRhZGF0YS5nYXRla2VlcGVyLnNoL3RpdGxlOiAiRXhpc3RpbmcgUmVzb3VyY2VzIChmaWVsZCBzZWxlY3RvcikiCiAgICBtZXRhZGF0YS5nYXRla2VlcGVyLnNoL3ZlcnNpb246ICIyLjAuMCIKICAgIGRlc2NyaXB0aW9uOiAiRGVuaWVzIG9wZXJhdGlvbnMgb24gYSBTZXJ2aWNlIHdoZW4gUG9kcyBzdGlsbCBtYXRjaCBpdHMgc3BlYy5zZWxlY3Rvci4iCiAgICBhenVyZS1wb2xpY3kuYXp1cmUuY29tL3JlcXVpcmVzLXN5bmMtZGF0YTogfAogICAgICBbW3siZ3JvdXBzIjpbIiJdLCJ2ZXJzaW9ucyI6WyJ2MSJdLCJraW5kcyI6WyJQb2QiXX1dXQpzcGVjOgogIGNyZDoKICAgIHNwZWM6CiAgICAgIG5hbWVzOgogICAgICAgIGtpbmQ6IEVXRXhpc3RpbmdSZXNvdXJjZXNGaWVsZAogICAgICB2YWxpZGF0aW9uOgogICAgICAgIG9wZW5BUElWM1NjaGVtYToKICAgICAgICAgIHR5cGU6IG9iamVjdAogICAgICAgICAgcHJvcGVydGllczoKICAgICAgICAgICAgb3BlcmF0aW9uczoKICAgICAgICAgICAgICB0eXBlOiBhcnJheQogICAgICAgICAgICAgIGl0ZW1zOiB7dHlwZTogc3RyaW5nfQogIHRhcmdldHM6CiAgICAtIHRhcmdldDogYWRtaXNzaW9uLms4cy5nYXRla2VlcGVyLnNoCiAgICAgIGNvZGU6CiAgICAgICAgLSBlbmdpbmU6IFJlZ28KICAgICAgICAgIHNvdXJjZToKICAgICAgICAgICAgcmVnbzogfAogICAgICAgICAgICAgIHBhY2thZ2UgZXdleGlzdGluZ3Jlc291cmNlc2ZpZWxkCgogICAgICAgICAgICAgIGltcG9ydCBmdXR1cmUua2V5d29yZHMuZXZlcnkKICAgICAgICAgICAgICBpbXBvcnQgZnV0dXJlLmtleXdvcmRzLmluCgogICAgICAgICAgICAgIHJldmlld19vYmplY3QgOj0gb2JqZWN0LmdldChpbnB1dC5yZXZpZXcsICJvYmplY3QiLCBudWxsKQogICAgICAgICAgICAgIHJldmlld19vbGRfb2JqZWN0IDo9IG9iamVjdC5nZXQoaW5wdXQucmV2aWV3LCAib2xkT2JqZWN0IiwgbnVsbCkKICAgICAgICAgICAgICBzdWJqZWN0IDo9IHMgewogICAgICAgICAgICAgICAgcmV2aWV3X29iamVjdCAhPSBudWxsCiAgICAgICAgICAgICAgICBzIDo9IHJldmlld19vYmplY3QKICAgICAgICAgICAgICB9IGVsc2UgOj0gcyB7CiAgICAgICAgICAgICAgICBzIDo9IHJldmlld19vbGRfb2JqZWN0CiAgICAgICAgICAgICAgfQoKICAgICAgICAgICAgICBzdWJqZWN0X21ldGFkYXRhIDo9IG9iamVjdC5nZXQoc3ViamVjdCwgIm1ldGFkYXRhIiwge30pCiAgICAgICAgICAgICAgc3ViamVjdF9uYW1lIDo9IG9iamVjdC5nZXQoc3ViamVjdF9tZXRhZGF0YSwgIm5hbWUiLCBvYmplY3QuZ2V0KGlucHV0LnJldmlldywgIm5hbWUiLCAiIikpCiAgICAgICAgICAgICAgc3ViamVjdF9ucyA6PSBvYmplY3QuZ2V0KHN1YmplY3RfbWV0YWRhdGEsICJuYW1lc3BhY2UiLCBvYmplY3QuZ2V0KGlucHV0LnJldmlldywgIm5hbWVzcGFjZSIsICIiKSkKCiAgICAgICAgICAgICAgb3BzIDo9IG9iamVjdC5nZXQoaW5wdXQucGFyYW1ldGVycywgIm9wZXJhdGlvbnMiLCBbIkRFTEVURSJdKQoKICAgICAgICAgICAgICAjIEhhcmRjb2RlZCBmaWVsZCBwYXRoOiBzcGVjLnNlbGVjdG9yIChhIG1hcFtzdHJpbmddc3RyaW5nKS4KICAgICAgICAgICAgICBmaWVsZF9zZWxlY3RvciA6PSBmcyB7CiAgICAgICAgICAgICAgICBmcyA6PSBzdWJqZWN0LnNwZWMuc2VsZWN0b3IKICAgICAgICAgICAgICAgIGlzX29iamVjdChmcykKICAgICAgICAgICAgICB9CgogICAgICAgICAgICAgIHBvZF9tYXRjaGVzX3NlbGVjdG9yKHBvZCwgc2VsZWN0b3IpIHsKICAgICAgICAgICAgICAgIGV2ZXJ5IGssIHYgaW4gc2VsZWN0b3IgewogICAgICAgICAgICAgICAgICBvYmplY3QuZ2V0KHBvZC5tZXRhZGF0YSwgImxhYmVscyIsIHt9KVtrXSA9PSB2CiAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgfQoKICAgICAgICAgICAgICBtYXRjaGluZ19wb2RbbmFtZV0gewogICAgICAgICAgICAgICAgcG9kIDo9IGRhdGEuaW52ZW50b3J5Lm5hbWVzcGFjZVtzdWJqZWN0X25zXVsidjEiXVsiUG9kIl1bbmFtZV0KICAgICAgICAgICAgICAgIHBvZF9tYXRjaGVzX3NlbGVjdG9yKHBvZCwgZmllbGRfc2VsZWN0b3IpCiAgICAgICAgICAgICAgfQoKICAgICAgICAgICAgICB2aW9sYXRpb25beyJtc2ciOiBtc2d9XSB7CiAgICAgICAgICAgICAgICBpbnB1dC5yZXZpZXcub3BlcmF0aW9uIGluIG9wcwogICAgICAgICAgICAgICAgc29tZSBuCiAgICAgICAgICAgICAgICBtYXRjaGluZ19wb2Rbbl0KICAgICAgICAgICAgICAgIG1zZyA6PSBzcHJpbnRmKCJTZXJ2aWNlICVxIGluICVxIGNhbm5vdCBiZSAlc2Q6IFBvZCAlcSBzdGlsbCBtYXRjaGVzIGl0cyBzZWxlY3RvciIsCiAgICAgICAgICAgICAgICAgIFtzdWJqZWN0X25hbWUsIHN1YmplY3RfbnMsIGxvd2VyKGlucHV0LnJldmlldy5vcGVyYXRpb24pLCBuXSkKICAgICAgICAgICAgICB9Cg=="
+          },
+          "apiGroups": [""],
+          "kinds": ["Service"],
+          "namespaces": "[parameters('namespaces')]",
+          "excludedNamespaces": "[parameters('excludedNamespaces')]",
+          "labelSelector": "[parameters('labelSelector')]",
+          "values": {"operations": ["DELETE"]}
+        }
+      }
+    }
+  }
+}

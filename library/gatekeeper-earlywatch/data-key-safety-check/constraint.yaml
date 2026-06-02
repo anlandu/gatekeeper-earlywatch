@@ -9,11 +9,3 @@ spec:
         kinds: ["ConfigMap"]
   parameters:
     sameNamespace: true
-    resources:
-      - apiGroup: ""
-        version: v1
-        kind: Pod
-        keyReferenceFields:
-          - refPath: spec.containers.env.valueFrom.configMapKeyRef
-            nameSubField: name
-            keySubField: key

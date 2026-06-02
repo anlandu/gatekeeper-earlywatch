@@ -1,0 +1,22 @@
+# Setup that primes a referenced ConfigMap; demo.sh kubectl-deletes the CM to trigger DENY.
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: referenced}
+data: {k: v}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: web}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: web}}
+  template:
+    metadata: {labels: {app: web}}
+    spec:
+      containers:
+        - name: c
+          image: nginx:alpine
+          volumeMounts: [{name: cfg, mountPath: /cfg}]
+      volumes:
+        - name: cfg
+          configMap: {name: referenced}

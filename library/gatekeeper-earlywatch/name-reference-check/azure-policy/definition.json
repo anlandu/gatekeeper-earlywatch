@@ -1,0 +1,57 @@
+{
+  "properties": {
+    "displayName": "EarlyWatch: NameReferenceCheck - block delete of referenced ConfigMaps",
+    "policyType": "Custom",
+    "mode": "Microsoft.Kubernetes.Data",
+    "description": "Denies DELETE of ConfigMaps when a Deployment still references them by name.",
+    "metadata": { "category": "Kubernetes" },
+    "parameters": {
+      "effect": {
+        "type": "String",
+        "metadata": { "displayName": "Effect", "description": "deny | audit | disabled" },
+        "allowedValues": ["audit", "deny", "disabled"],
+        "defaultValue": "deny"
+      },
+      "excludedNamespaces": {
+        "type": "Array",
+        "metadata": { "displayName": "Namespaces to exclude" },
+        "defaultValue": ["kube-system", "gatekeeper-system", "azure-arc", "azure-extensions-usage-system"]
+      },
+      "namespaces": {
+        "type": "Array",
+        "metadata": { "displayName": "Namespaces to include (empty = all)" },
+        "defaultValue": []
+      },
+      "labelSelector": {
+        "type": "Object",
+        "metadata": { "displayName": "Kubernetes label selector" },
+        "defaultValue": {}
+      }
+    },
+    "policyRule": {
+      "if": {
+        "field": "type",
+        "in": [
+          "Microsoft.ContainerService/managedClusters",
+          "Microsoft.Kubernetes/connectedClusters",
+          "AKS Engine"
+        ]
+      },
+      "then": {
+        "effect": "[parameters('effect')]",
+        "details": {
+          "templateInfo": {
+            "sourceType": "Base64Encoded",
+            "content": "IyBFYXJseVdhdGNoIE5hbWVSZWZlcmVuY2VDaGVjayAtPiBHYXRla2VlcGVyIHJlZmVyZW50aWFsIGNvbnN0cmFpbnQgKHNpbXBsaWZpZWQgZm9yIEF6dXJlIFBvbGljeSBkZW1vKS4KIwojIERlbmllcyBERUxFVEUgb2YgYSBDb25maWdNYXAgd2hlbiBhbnkgRGVwbG95bWVudCBpbiB0aGUgY2x1c3RlciByZWZlcmVuY2VzCiMgaXQgdmlhIG9uZSBvZiB0aGUgY2Fub25pY2FsIHJlZmVycmVyIHBhdGhzOgojICAgc3BlYy50ZW1wbGF0ZS5zcGVjLnZvbHVtZXMuY29uZmlnTWFwLm5hbWUKIyAgIHNwZWMudGVtcGxhdGUuc3BlYy5jb250YWluZXJzLmVudkZyb20uY29uZmlnTWFwUmVmLm5hbWUKIyAgIHNwZWMudGVtcGxhdGUuc3BlYy5jb250YWluZXJzLmVudi52YWx1ZUZyb20uY29uZmlnTWFwS2V5UmVmLm5hbWUKIwojIE9iamVjdC1zaGFwZWQgYHJlc291cmNlc1tdYCBwYXJhbWV0ZXIgZnJvbSB1cHN0cmVhbSBpcyBoYXJkY29kZWQgaW50byB0aGUKIyBSZWdvIGJvZHk7IG9ubHkgdGhlIHNjYWxhciBgb3BlcmF0aW9uc2AgYW5kIGBzYW1lTmFtZXNwYWNlYCByZW1haW4uCmFwaVZlcnNpb246IHRlbXBsYXRlcy5nYXRla2VlcGVyLnNoL3YxCmtpbmQ6IENvbnN0cmFpbnRUZW1wbGF0ZQptZXRhZGF0YToKICBuYW1lOiBld25hbWVyZWZlcmVuY2VjaGVjawogIGFubm90YXRpb25zOgogICAgbWV0YWRhdGEuZ2F0ZWtlZXBlci5zaC90aXRsZTogIk5hbWUgUmVmZXJlbmNlIENoZWNrIgogICAgbWV0YWRhdGEuZ2F0ZWtlZXBlci5zaC92ZXJzaW9uOiAiMi4wLjAiCiAgICBkZXNjcmlwdGlvbjogIlByZXZlbnRzIGRlbGV0aW5nIENvbmZpZ01hcHMgdGhhdCBhcmUgc3RpbGwgcmVmZXJlbmNlZCBieSBEZXBsb3ltZW50cy4iCiAgICBhenVyZS1wb2xpY3kuYXp1cmUuY29tL3JlcXVpcmVzLXN5bmMtZGF0YTogfAogICAgICBbW3siZ3JvdXBzIjpbImFwcHMiXSwidmVyc2lvbnMiOlsidjEiXSwia2luZHMiOlsiRGVwbG95bWVudCJdfV1dCnNwZWM6CiAgY3JkOgogICAgc3BlYzoKICAgICAgbmFtZXM6CiAgICAgICAga2luZDogRVdOYW1lUmVmZXJlbmNlQ2hlY2sKICAgICAgdmFsaWRhdGlvbjoKICAgICAgICBvcGVuQVBJVjNTY2hlbWE6CiAgICAgICAgICB0eXBlOiBvYmplY3QKICAgICAgICAgIHByb3BlcnRpZXM6CiAgICAgICAgICAgIHNhbWVOYW1lc3BhY2U6IHt0eXBlOiBib29sZWFufQogICAgICAgICAgICBvcGVyYXRpb25zOgogICAgICAgICAgICAgIHR5cGU6IGFycmF5CiAgICAgICAgICAgICAgaXRlbXM6IHt0eXBlOiBzdHJpbmd9CiAgdGFyZ2V0czoKICAgIC0gdGFyZ2V0OiBhZG1pc3Npb24uazhzLmdhdGVrZWVwZXIuc2gKICAgICAgY29kZToKICAgICAgICAtIGVuZ2luZTogUmVnbwogICAgICAgICAgc291cmNlOgogICAgICAgICAgICByZWdvOiB8CiAgICAgICAgICAgICAgcGFja2FnZSBld25hbWVyZWZlcmVuY2VjaGVjawoKICAgICAgICAgICAgICBpbXBvcnQgZnV0dXJlLmtleXdvcmRzLmluCgogICAgICAgICAgICAgIHRhcmdldF9uYW1lIDo9IGlucHV0LnJldmlldy5vbGRPYmplY3QubWV0YWRhdGEubmFtZQogICAgICAgICAgICAgIHRhcmdldF9ucyAgIDo9IGlucHV0LnJldmlldy5vbGRPYmplY3QubWV0YWRhdGEubmFtZXNwYWNlCiAgICAgICAgICAgICAgcGFyYW1zICAgICAgOj0gaW5wdXQucGFyYW1ldGVycwogICAgICAgICAgICAgIHNhbWVfbnMgICAgIDo9IG9iamVjdC5nZXQocGFyYW1zLCAic2FtZU5hbWVzcGFjZSIsIHRydWUpCiAgICAgICAgICAgICAgb3BzICAgICAgICAgOj0gb2JqZWN0LmdldChwYXJhbXMsICJvcGVyYXRpb25zIiwgWyJERUxFVEUiXSkKCiAgICAgICAgICAgICAgcmVmZXJyZXJfZGVwbG95bWVudHMgOj0gZGVwcyB7CiAgICAgICAgICAgICAgICBzYW1lX25zID09IHRydWUKICAgICAgICAgICAgICAgIGRlcHMgOj0geyBzcHJpbnRmKCIlcy8lcyIsIFt0YXJnZXRfbnMsIG5hbWVdKTogbyB8CiAgICAgICAgICAgICAgICAgIG8gOj0gZGF0YS5pbnZlbnRvcnkubmFtZXNwYWNlW3RhcmdldF9uc11bImFwcHMvdjEiXVsiRGVwbG95bWVudCJdW25hbWVdCiAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgfQogICAgICAgICAgICAgIHJlZmVycmVyX2RlcGxveW1lbnRzIDo9IGRlcHMgewogICAgICAgICAgICAgICAgc2FtZV9ucyA9PSBmYWxzZQogICAgICAgICAgICAgICAgZGVwcyA6PSB7IHNwcmludGYoIiVzLyVzIiwgW25zLCBuYW1lXSk6IG8gfAogICAgICAgICAgICAgICAgICBzb21lIG5zCiAgICAgICAgICAgICAgICAgIG8gOj0gZGF0YS5pbnZlbnRvcnkubmFtZXNwYWNlW25zXVsiYXBwcy92MSJdWyJEZXBsb3ltZW50Il1bbmFtZV0KICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICB9CgogICAgICAgICAgICAgICMgc3BlYy50ZW1wbGF0ZS5zcGVjLnZvbHVtZXNbXS5jb25maWdNYXAubmFtZQogICAgICAgICAgICAgIGNtX25hbWVfaW5fdm9sdW1lcyhkZXApIDo9IG5hbWUgewogICAgICAgICAgICAgICAgc29tZSB2aQogICAgICAgICAgICAgICAgdm9sIDo9IGRlcC5zcGVjLnRlbXBsYXRlLnNwZWMudm9sdW1lc1t2aV0KICAgICAgICAgICAgICAgIG5hbWUgOj0gdm9sLmNvbmZpZ01hcC5uYW1lCiAgICAgICAgICAgICAgfQoKICAgICAgICAgICAgICAjIHNwZWMudGVtcGxhdGUuc3BlYy5jb250YWluZXJzW10uZW52RnJvbVtdLmNvbmZpZ01hcFJlZi5uYW1lCiAgICAgICAgICAgICAgY21fbmFtZV9pbl9lbnZmcm9tKGRlcCkgOj0gbmFtZSB7CiAgICAgICAgICAgICAgICBzb21lIGNpCiAgICAgICAgICAgICAgICBjb250YWluZXIgOj0gZGVwLnNwZWMudGVtcGxhdGUuc3BlYy5jb250YWluZXJzW2NpXQogICAgICAgICAgICAgICAgc29tZSBlaQogICAgICAgICAgICAgICAgZWYgOj0gY29udGFpbmVyLmVudkZyb21bZWldCiAgICAgICAgICAgICAgICBuYW1lIDo9IGVmLmNvbmZpZ01hcFJlZi5uYW1lCiAgICAgICAgICAgICAgfQoKICAgICAgICAgICAgICAjIHNwZWMudGVtcGxhdGUuc3BlYy5jb250YWluZXJzW10uZW52W10udmFsdWVGcm9tLmNvbmZpZ01hcEtleVJlZi5uYW1lCiAgICAgICAgICAgICAgY21fbmFtZV9pbl9lbnZ2YWx1ZXJlZihkZXApIDo9IG5hbWUgewogICAgICAgICAgICAgICAgc29tZSBjaQogICAgICAgICAgICAgICAgY29udGFpbmVyIDo9IGRlcC5zcGVjLnRlbXBsYXRlLnNwZWMuY29udGFpbmVyc1tjaV0KICAgICAgICAgICAgICAgIHNvbWUgZWkKICAgICAgICAgICAgICAgIGVudiA6PSBjb250YWluZXIuZW52W2VpXQogICAgICAgICAgICAgICAgbmFtZSA6PSBlbnYudmFsdWVGcm9tLmNvbmZpZ01hcEtleVJlZi5uYW1lCiAgICAgICAgICAgICAgfQoKICAgICAgICAgICAgICBkZXBfcmVmZXJlbmNlc19jbShkZXApIHsKICAgICAgICAgICAgICAgIGNtX25hbWVfaW5fdm9sdW1lcyhkZXApID09IHRhcmdldF9uYW1lCiAgICAgICAgICAgICAgfQogICAgICAgICAgICAgIGRlcF9yZWZlcmVuY2VzX2NtKGRlcCkgewogICAgICAgICAgICAgICAgY21fbmFtZV9pbl9lbnZmcm9tKGRlcCkgPT0gdGFyZ2V0X25hbWUKICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgZGVwX3JlZmVyZW5jZXNfY20oZGVwKSB7CiAgICAgICAgICAgICAgICBjbV9uYW1lX2luX2VudnZhbHVlcmVmKGRlcCkgPT0gdGFyZ2V0X25hbWUKICAgICAgICAgICAgICB9CgogICAgICAgICAgICAgIG9mZmVuZGVyW3sibmFtZSI6IHJlZl9uYW1lfV0gewogICAgICAgICAgICAgICAgc29tZSBrZXkKICAgICAgICAgICAgICAgIGRlcCA6PSByZWZlcnJlcl9kZXBsb3ltZW50c1trZXldCiAgICAgICAgICAgICAgICBkZXBfcmVmZXJlbmNlc19jbShkZXApCiAgICAgICAgICAgICAgICByZWZfbmFtZSA6PSBkZXAubWV0YWRhdGEubmFtZQogICAgICAgICAgICAgIH0KCiAgICAgICAgICAgICAgdmlvbGF0aW9uW3sibXNnIjogbXNnfV0gewogICAgICAgICAgICAgICAgaW5wdXQucmV2aWV3Lm9wZXJhdGlvbiBpbiBvcHMKICAgICAgICAgICAgICAgIG9mZiA6PSBvZmZlbmRlcltfXQogICAgICAgICAgICAgICAgbXNnIDo9IHNwcmludGYoIkNvbmZpZ01hcCAlcSBjYW5ub3QgYmUgJXNkOiBEZXBsb3ltZW50ICVxIHN0aWxsIHJlZmVyZW5jZXMgaXQiLAogICAgICAgICAgICAgICAgICBbdGFyZ2V0X25hbWUsIGxvd2VyKGlucHV0LnJldmlldy5vcGVyYXRpb24pLCBvZmYubmFtZV0pCiAgICAgICAgICAgICAgfQo="
+          },
+          "apiGroups": [""],
+          "kinds": ["ConfigMap"],
+          "namespaces": "[parameters('namespaces')]",
+          "excludedNamespaces": "[parameters('excludedNamespaces')]",
+          "labelSelector": "[parameters('labelSelector')]",
+          "values": {"sameNamespace": true, "operations": ["DELETE"]}
+        }
+      }
+    }
+  }
+}

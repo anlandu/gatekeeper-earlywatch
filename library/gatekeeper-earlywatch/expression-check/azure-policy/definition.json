@@ -1,0 +1,57 @@
+{
+  "properties": {
+    "displayName": "EarlyWatch: ExpressionCheck - block delete in production",
+    "policyType": "Custom",
+    "mode": "Microsoft.Kubernetes.Data",
+    "description": "CEL-based: denies DELETE in namespace == 'production'.",
+    "metadata": { "category": "Kubernetes" },
+    "parameters": {
+      "effect": {
+        "type": "String",
+        "metadata": { "displayName": "Effect", "description": "deny | audit | disabled" },
+        "allowedValues": ["audit", "deny", "disabled"],
+        "defaultValue": "deny"
+      },
+      "excludedNamespaces": {
+        "type": "Array",
+        "metadata": { "displayName": "Namespaces to exclude" },
+        "defaultValue": ["kube-system", "gatekeeper-system", "azure-arc", "azure-extensions-usage-system"]
+      },
+      "namespaces": {
+        "type": "Array",
+        "metadata": { "displayName": "Namespaces to include (empty = all)" },
+        "defaultValue": []
+      },
+      "labelSelector": {
+        "type": "Object",
+        "metadata": { "displayName": "Kubernetes label selector" },
+        "defaultValue": {}
+      }
+    },
+    "policyRule": {
+      "if": {
+        "field": "type",
+        "in": [
+          "Microsoft.ContainerService/managedClusters",
+          "Microsoft.Kubernetes/connectedClusters",
+          "AKS Engine"
+        ]
+      },
+      "then": {
+        "effect": "[parameters('effect')]",
+        "details": {
+          "templateInfo": {
+            "sourceType": "Base64Encoded",
+            "content": "IyBFeGFtcGxlOiB0cmFuc2xhdGluZyBhIHNpbmdsZSBFYXJseVdhdGNoIEV4cHJlc3Npb25DaGVjayBydWxlIGludG8gYQojIGRlZGljYXRlZCBHYXRla2VlcGVyIENvbnN0cmFpbnRUZW1wbGF0ZS4KIwojIFNvdXJjZSBFYXJseVdhdGNoIHJ1bGU6CiMgICAtIG5hbWU6IGJsb2NrLWRlbGV0ZS1pbi1wcm9kdWN0aW9uCiMgICAgIHR5cGU6IEV4cHJlc3Npb25DaGVjawojICAgICBleHByZXNzaW9uQ2hlY2s6CiMgICAgICAgZXhwcmVzc2lvbjogIm5hbWVzcGFjZSA9PSAncHJvZHVjdGlvbiciCiMgICAgIG1lc3NhZ2U6ICJEaXJlY3QgZGVsZXRpb24gaXMgbm90IHBlcm1pdHRlZCBpbiB0aGUgcHJvZHVjdGlvbiBuYW1lc3BhY2UuIgojCiMgRGVzaWduIG5vdGU6IEVhcmx5V2F0Y2gncyBFeHByZXNzaW9uQ2hlY2sgZ3JhbW1hciBpcyBpbnRlbnRpb25hbGx5IHRpbnkg4oCUCiMgYGZpZWxkID09ICd2YWx1ZSdgIG92ZXIge29wZXJhdGlvbiwgbmFtZXNwYWNlLCBuYW1lfSDigJQgYW5kIGlzIHN0cmljdGx5IGxlc3MKIyBjYXBhYmxlIHRoYW4gQ0VMIG9yIFJlZ28uIE5laXRoZXIgQ0VMIG5vciBSZWdvIGNhbiBldmFsKCkgYSBzdHJpbmcgZnJvbQojIGNvbnN0cmFpbnQgcGFyYW1ldGVycyBhdCBhZG1pc3Npb24gdGltZSwgc28gYSBzaW5nbGUgImdlbmVyaWMiCiMgQ29uc3RyYWludFRlbXBsYXRlIGNhbm5vdCBhY2NlcHQgYW4gYXJiaXRyYXJ5IEVhcmx5V2F0Y2ggZXhwcmVzc2lvbiBzdHJpbmcKIyBhbmQgcmVtYWluIHRydWx5IGdlbmVyaWMuIFRoZSBHYXRla2VlcGVyLW5hdGl2ZSBwYXR0ZXJuIGlzIHRoZSBvcHBvc2l0ZToKIyBlYWNoIEVhcmx5V2F0Y2ggRXhwcmVzc2lvbkNoZWNrIHJ1bGUgYmVjb21lcyBpdHMgb3duIENvbnN0cmFpbnRUZW1wbGF0ZQojIHdpdGggdGhlIHByZWRpY2F0ZSBpbmxpbmVkIGFzIGEgb25lLWxpbmUgQ0VMIGBleHByZXNzaW9uYC4gU2VlIFJFQURNRS5tZC4KYXBpVmVyc2lvbjogdGVtcGxhdGVzLmdhdGVrZWVwZXIuc2gvdjEKa2luZDogQ29uc3RyYWludFRlbXBsYXRlCm1ldGFkYXRhOgogIG5hbWU6IGV3YmxvY2tkZWxldGVpbnByb2R1Y3Rpb24KICBhbm5vdGF0aW9uczoKICAgIG1ldGFkYXRhLmdhdGVrZWVwZXIuc2gvdGl0bGU6ICJCbG9jayBERUxFVEUgaW4gcHJvZHVjdGlvbiIKICAgIG1ldGFkYXRhLmdhdGVrZWVwZXIuc2gvdmVyc2lvbjogIjEuMC4wIgogICAgZGVzY3JpcHRpb246ICJEZW5pZXMgREVMRVRFIHJlcXVlc3RzIGluIHRoZSBwcm9kdWN0aW9uIG5hbWVzcGFjZS4iCnNwZWM6CiAgY3JkOgogICAgc3BlYzoKICAgICAgbmFtZXM6CiAgICAgICAga2luZDogRVdCbG9ja0RlbGV0ZUluUHJvZHVjdGlvbgogIHRhcmdldHM6CiAgICAtIHRhcmdldDogYWRtaXNzaW9uLms4cy5nYXRla2VlcGVyLnNoCiAgICAgIGNvZGU6CiAgICAgICAgLSBlbmdpbmU6IFJlZ28KICAgICAgICAgIHNvdXJjZToKICAgICAgICAgICAgcmVnbzogfAogICAgICAgICAgICAgIHBhY2thZ2UgZXdibG9ja2RlbGV0ZWlucHJvZHVjdGlvbgoKICAgICAgICAgICAgICB2aW9sYXRpb25beyJtc2ciOiBtc2d9XSB7CiAgICAgICAgICAgICAgICBpbnB1dC5yZXZpZXcub3BlcmF0aW9uID09ICJERUxFVEUiCiAgICAgICAgICAgICAgICBpbnB1dC5yZXZpZXcubmFtZXNwYWNlID09ICJwcm9kdWN0aW9uIgogICAgICAgICAgICAgICAgbXNnIDo9ICJEaXJlY3QgZGVsZXRpb24gaXMgbm90IHBlcm1pdHRlZCBpbiB0aGUgcHJvZHVjdGlvbiBuYW1lc3BhY2UuIgogICAgICAgICAgICAgIH0KICAgICAgICAtIGVuZ2luZTogSzhzTmF0aXZlVmFsaWRhdGlvbgogICAgICAgICAgc291cmNlOgogICAgICAgICAgICB2YWxpZGF0aW9uczoKICAgICAgICAgICAgICAtIGV4cHJlc3Npb246IHwKICAgICAgICAgICAgICAgICAgIShyZXF1ZXN0Lm9wZXJhdGlvbiA9PSAnREVMRVRFJyAmJiByZXF1ZXN0Lm5hbWVzcGFjZSA9PSAncHJvZHVjdGlvbicpCiAgICAgICAgICAgICAgICBtZXNzYWdlRXhwcmVzc2lvbjogfAogICAgICAgICAgICAgICAgICAiRGlyZWN0IGRlbGV0aW9uIGlzIG5vdCBwZXJtaXR0ZWQgaW4gdGhlIHByb2R1Y3Rpb24gbmFtZXNwYWNlLiIK"
+          },
+          "apiGroups": [""],
+          "kinds": ["ConfigMap"],
+          "namespaces": "[parameters('namespaces')]",
+          "excludedNamespaces": "[parameters('excludedNamespaces')]",
+          "labelSelector": "[parameters('labelSelector')]",
+          "values": {}
+        }
+      }
+    }
+  }
+}
