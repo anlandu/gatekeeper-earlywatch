@@ -58,12 +58,18 @@ for _ in $(seq 1 30); do
 done
 
 if [ -f "$HERE/fixtures/greenfield/bad.yaml" ]; then
-  log "greenfield BAD (expect deny)"
-  if kubectl -n "$NS" apply -f "$HERE/fixtures/greenfield/bad.yaml" 2>&1 | tee /tmp/$RULE.bad.log; then
+  log "greenfield BAD seed (unlock+delete leftover so re-apply is clean CREATE)"
+  kubectl -n "$NS" patch deployment locked-gf --type=json -p='[{"op":"remove","path":"/metadata/annotations/earlywatch.io~1lock"}]' >/dev/null 2>&1 || true
+  kubectl -n "$NS" delete deployment locked-gf --ignore-not-found --wait=true >/dev/null 2>&1 || true
+  kubectl -n "$NS" apply -f "$HERE/fixtures/greenfield/bad.yaml"
+  log "wait for locked-gf to appear in Gatekeeper sync inventory (best-effort)"
+  sleep 60
+  log "greenfield BAD scale (expect deny: scale subresource handled via inventory lookup)"
+  if kubectl -n "$NS" scale deployment locked-gf --replicas=2 2>&1 | tee /tmp/$RULE.bad.log; then
     echo "EXPECTED DENY BUT GOT ALLOW for $RULE" >&2
     exit 1
   fi
-  grep -qi 'denied' /tmp/$RULE.bad.log || echo "warn: denial output did not include 'denied'"
+  grep -qi 'denied\|locked' /tmp/$RULE.bad.log || echo "warn: denial output did not include expected text"
 fi
 
 if [ -f "$HERE/fixtures/greenfield/good.yaml" ]; then

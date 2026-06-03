@@ -28,8 +28,10 @@ fi
 for _ in $(seq 1 30); do kubectl get constraints.gatekeeper.sh 2>/dev/null | grep -q "$DEFNAME" && break; sleep 10; done
 
 if [ -f "$HERE/fixtures/greenfield/bad.yaml" ]; then
-  log "greenfield BAD (expect deny)"
-  if kubectl -n "$NS" apply -f "$HERE/fixtures/greenfield/bad.yaml" 2>&1 | tee /tmp/$RULE.bad.log; then
+  log "greenfield BAD seed (CREATE svc+production-pod allowed) - additional cluster state"
+  kubectl -n "$NS" apply -f "$HERE/fixtures/greenfield/bad.yaml"
+  log "brownfield BAD DELETE bf-svc-bad (expect deny: bf-prod-pod with tier=production is in sync data)"
+  if kubectl -n "$NS" delete svc bf-svc-bad --wait=false 2>&1 | tee /tmp/$RULE.bad.log; then
     echo "EXPECTED DENY BUT GOT ALLOW for $RULE" >&2; exit 1
   fi
 fi

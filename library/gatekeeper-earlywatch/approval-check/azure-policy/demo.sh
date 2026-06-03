@@ -20,6 +20,22 @@ log "brownfield seed (pre-assignment, allowed)"
 [ -f "$HERE/fixtures/brownfield/bad.yaml" ] && kubectl -n "$NS" apply -f "$HERE/fixtures/brownfield/bad.yaml"
 [ -f "$HERE/fixtures/brownfield/good.yaml" ] && kubectl -n "$NS" apply -f "$HERE/fixtures/brownfield/good.yaml"
 
+log "ensure approval-check signing keypair (no-op if orchestrator already did it)"
+KEY_DIR="$HERE/keys"
+mkdir -p "$KEY_DIR"
+if [ ! -s "$KEY_DIR/priv.pem" ] || [ ! -s "$KEY_DIR/pub.pem" ]; then
+  openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$KEY_DIR/priv.pem" >/dev/null 2>&1
+  openssl pkey -in "$KEY_DIR/priv.pem" -pubout -out "$KEY_DIR/pub.pem"
+fi
+
+log "patch publicKey into definition.json (no-op if unchanged)"
+if [ -z "${SKIP_POLICY_SETUP:-}" ]; then
+  PUB_PEM=$(cat "$KEY_DIR/pub.pem")
+  TMP=$(mktemp)
+  jq --arg pk "$PUB_PEM" '.properties.policyRule.then.details.values.publicKey = $pk' "$HERE/definition.json" > "$TMP"
+  mv "$TMP" "$HERE/definition.json"
+fi
+
 log "create policy definition (idempotent)"
 if [ -f "$HERE/definition.json" ]; then
   if [ -z "${SKIP_POLICY_SETUP:-}" ]; then
@@ -57,18 +73,42 @@ for _ in $(seq 1 30); do
   sleep 10
 done
 
-if [ -f "$HERE/fixtures/greenfield/bad.yaml" ]; then
-  log "greenfield BAD (expect deny)"
-  if kubectl -n "$NS" apply -f "$HERE/fixtures/greenfield/bad.yaml" 2>&1 | tee /tmp/$RULE.bad.log; then
-    echo "EXPECTED DENY BUT GOT ALLOW for $RULE" >&2
-    exit 1
-  fi
-  grep -qi 'denied' /tmp/$RULE.bad.log || echo "warn: denial output did not include 'denied'"
-fi
+sign_delete_path() {
+  # echo -n to avoid trailing newline in the signed message; must match rego canonical_path exactly.
+  printf '%s' "$1" | openssl dgst -sha256 -sigopt rsa_padding_mode:pss -sign "$KEY_DIR/priv.pem" -binary | base64 -w0
+}
 
-if [ -f "$HERE/fixtures/greenfield/good.yaml" ]; then
-  log "greenfield GOOD (expect allow)"
-  kubectl -n "$NS" apply -f "$HERE/fixtures/greenfield/good.yaml"
+GOOD_PATH="v1/namespaces/$NS/configmaps/protected-good"
+GOOD_SIG=$(sign_delete_path "$GOOD_PATH")
+BAD_SIG="AAAA-bogus-signature-AAAA"
+
+log "seed CMs with delete-approval annotations (CREATE skips rule)"
+cat <<EOF | kubectl -n "$NS" apply -f -
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: protected-good
+  annotations:
+    earlywatch.io/approved: "$GOOD_SIG"
+data: {k: v}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: protected-bad
+  annotations:
+    earlywatch.io/approved: "$BAD_SIG"
+data: {k: v}
+EOF
+
+log "DELETE protected-bad with bogus signature (expect deny)"
+if kubectl -n "$NS" delete cm protected-bad --wait=false 2>&1 | tee /tmp/$RULE.bad.log; then
+  echo "EXPECTED DENY BUT GOT ALLOW for $RULE" >&2
+  exit 1
 fi
+grep -qi 'denied\|signature\|rejected' /tmp/$RULE.bad.log || echo "warn: denial output did not include expected text"
+
+log "DELETE protected-good with valid signature (expect allow)"
+kubectl -n "$NS" delete cm protected-good --wait=false
 
 log "done (brownfield ARG compliance verified by top-level orchestrator)"

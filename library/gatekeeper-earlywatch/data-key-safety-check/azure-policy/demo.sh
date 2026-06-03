@@ -58,7 +58,11 @@ for _ in $(seq 1 30); do
 done
 
 if [ -f "$HERE/fixtures/greenfield/bad.yaml" ]; then
-  log "greenfield BAD (expect deny)"
+  log "reset shared CM to K1+K2 so the BAD apply is an actual UPDATE that drops K1"
+  kubectl -n "$NS" apply -f "$HERE/fixtures/greenfield/good.yaml"
+  log "wait for pod 'refs' to appear in Gatekeeper sync inventory (best-effort)"
+  sleep 60
+  log "greenfield BAD (expect deny - drops K1 still referenced by pod refs)"
   if kubectl -n "$NS" apply -f "$HERE/fixtures/greenfield/bad.yaml" 2>&1 | tee /tmp/$RULE.bad.log; then
     echo "EXPECTED DENY BUT GOT ALLOW for $RULE" >&2
     exit 1

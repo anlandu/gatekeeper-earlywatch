@@ -57,18 +57,16 @@ for _ in $(seq 1 30); do
   sleep 10
 done
 
-if [ -f "$HERE/fixtures/greenfield/bad.yaml" ]; then
-  log "greenfield BAD (expect deny)"
-  if kubectl -n "$NS" apply -f "$HERE/fixtures/greenfield/bad.yaml" 2>&1 | tee /tmp/$RULE.bad.log; then
-    echo "EXPECTED DENY BUT GOT ALLOW for $RULE" >&2
-    exit 1
-  fi
-  grep -qi 'denied' /tmp/$RULE.bad.log || echo "warn: denial output did not include 'denied'"
-fi
-
 if [ -f "$HERE/fixtures/greenfield/good.yaml" ]; then
-  log "greenfield GOOD (expect allow)"
+  log "greenfield seed (CREATE svc+kept-pod with matching selector)"
   kubectl -n "$NS" apply -f "$HERE/fixtures/greenfield/good.yaml"
 fi
+
+log "brownfield BAD UPDATE bf-svc-good selector to non-matching (expect deny: bf-here-pod is in sync data)"
+if kubectl -n "$NS" patch svc bf-svc-good --type=merge -p '{"spec":{"selector":{"app":"gone"}}}' 2>&1 | tee /tmp/$RULE.bad.log; then
+  echo "EXPECTED DENY BUT GOT ALLOW for $RULE" >&2
+  exit 1
+fi
+grep -qi 'denied\|zero matching' /tmp/$RULE.bad.log || echo "warn: denial output did not include expected text"
 
 log "done (brownfield ARG compliance verified by top-level orchestrator)"

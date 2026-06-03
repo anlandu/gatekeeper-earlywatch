@@ -58,12 +58,14 @@ for _ in $(seq 1 30); do
 done
 
 if [ -f "$HERE/fixtures/greenfield/bad.yaml" ]; then
-  log "greenfield BAD (expect deny)"
-  if kubectl -n "$NS" apply -f "$HERE/fixtures/greenfield/bad.yaml" 2>&1 | tee /tmp/$RULE.bad.log; then
+  log "greenfield BAD seed (CREATE cm+deployment allowed) - additional cluster state"
+  kubectl -n "$NS" apply -f "$HERE/fixtures/greenfield/bad.yaml"
+  log "brownfield BAD DELETE bf-cm (expect deny: bf-dep still references it and is in sync data)"
+  if kubectl -n "$NS" delete cm bf-cm --wait=false 2>&1 | tee /tmp/$RULE.bad.log; then
     echo "EXPECTED DENY BUT GOT ALLOW for $RULE" >&2
     exit 1
   fi
-  grep -qi 'denied' /tmp/$RULE.bad.log || echo "warn: denial output did not include 'denied'"
+  grep -qi 'denied\|references' /tmp/$RULE.bad.log || echo "warn: denial output did not include expected text"
 fi
 
 if [ -f "$HERE/fixtures/greenfield/good.yaml" ]; then

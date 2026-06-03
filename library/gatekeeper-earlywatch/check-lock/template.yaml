@@ -22,8 +22,8 @@ metadata:
     metadata.gatekeeper.sh/title: "Check Lock"
     metadata.gatekeeper.sh/version: "1.0.0"
     description: "Blocks updates or deletes to locked resources unless the change is limited to allowed lock metadata."
-    metadata.gatekeeper.sh/requires-sync-data: |
-      "[[{\"groups\":[\"apps\"],\"versions\":[\"v1\"],\"kinds\":[\"Deployment\"]}]]"
+    azure-policy.azure.com/requires-sync-data: |
+      [[{"groups":["apps"],"versions":["v1"],"kinds":["Deployment"]}]]
 spec:
   crd:
     spec:

@@ -4,27 +4,47 @@
     "policyType": "Custom",
     "mode": "Microsoft.Kubernetes.Data",
     "description": "Denies UPDATEs to Deployments touched manually within the configured window; backed by external-data provider.",
-    "metadata": { "category": "Kubernetes" },
+    "metadata": {
+      "category": "Kubernetes"
+    },
     "parameters": {
       "effect": {
         "type": "String",
-        "metadata": { "displayName": "Effect", "description": "deny | audit | disabled" },
-        "allowedValues": ["audit", "deny", "disabled"],
+        "metadata": {
+          "displayName": "Effect",
+          "description": "deny | audit | disabled"
+        },
+        "allowedValues": [
+          "audit",
+          "deny",
+          "disabled"
+        ],
         "defaultValue": "deny"
       },
       "excludedNamespaces": {
         "type": "Array",
-        "metadata": { "displayName": "Namespaces to exclude" },
-        "defaultValue": ["kube-system", "gatekeeper-system", "azure-arc", "azure-extensions-usage-system"]
+        "metadata": {
+          "displayName": "Namespaces to exclude"
+        },
+        "defaultValue": [
+          "kube-system",
+          "gatekeeper-system",
+          "azure-arc",
+          "azure-extensions-usage-system"
+        ]
       },
       "namespaces": {
         "type": "Array",
-        "metadata": { "displayName": "Namespaces to include (empty = all)" },
+        "metadata": {
+          "displayName": "Namespaces to include (empty = all)"
+        },
         "defaultValue": []
       },
       "labelSelector": {
         "type": "Object",
-        "metadata": { "displayName": "Kubernetes label selector" },
+        "metadata": {
+          "displayName": "Kubernetes label selector"
+        },
         "defaultValue": {}
       }
     },
@@ -44,12 +64,23 @@
             "sourceType": "Base64Encoded",
             "content": "IyBFYXJseVdhdGNoIE1hbnVhbFRvdWNoQ2hlY2sgLT4gR2F0ZWtlZXBlciBleHRlcm5hbC1kYXRhIGNvbnN0cmFpbnQKIwojIFF1ZXJpZXMgdGhlIG1hbnVhbC10b3VjaCBwcm92aWRlciBzZXJ2ZWQgYnkgdG91Y2gtbW9uaXRvciBpbnN0ZWFkIG9mIHJlYWRpbmcKIyBzeW5jZWQgTWFudWFsVG91Y2hFdmVudCBDUnMgZnJvbSBkYXRhLmludmVudG9yeS4gVGhlIHRvdWNoLW1vbml0b3IgYXVkaXQgc2luawojIHJlY29yZHMgbWF0Y2hpbmcgYXVkaXQgZXZlbnRzIGluIGFuIGluLW1lbW9yeSBjYWNoZSBhbmQgYW5zd2VycyBwcm92aWRlcgojIGxvb2t1cHMgYXQgL3ZhbGlkYXRlLW1hbnVhbC10b3VjaC4KIwojIFBhcmFtZXRlcnMgbWlycm9yIEVhcmx5V2F0Y2gncyBDViBzcGVjIHBsdXMgcHJvdmlkZXIgY29udHJvbHM6CiMgICBvcGVyYXRpb25zICAgICAgYWRtaXNzaW9uIG9wcyB0aGlzIGNoZWNrIGFwcGxpZXMgdG8gKGUuZy4gWyJVUERBVEUiXSkKIyAgIHdpbmRvd0R1cmF0aW9uICBHbyBkdXJhdGlvbiBzdHJpbmcgKCIyaCIpOyBkZWZhdWx0ICIxaCIKIyAgIHByb3ZpZGVyICAgICAgICBHYXRla2VlcGVyIGV4dGVybmFsLWRhdGEgUHJvdmlkZXIgbmFtZTsgZGVmYXVsdCAibWFudWFsLXRvdWNoLXByb3ZpZGVyIgojICAgZmFpbHVyZU1vZGUgICAgICJJZ25vcmUiIChkZWZhdWx0IGZhaWwtb3Blbikgb3IgIkRlbnkiIChmYWlsLWNsb3NlZCkKYXBpVmVyc2lvbjogdGVtcGxhdGVzLmdhdGVrZWVwZXIuc2gvdjEKa2luZDogQ29uc3RyYWludFRlbXBsYXRlCm1ldGFkYXRhOgogIG5hbWU6IGV3bWFudWFsdG91Y2hjaGVjawogIGFubm90YXRpb25zOgogICAgbWV0YWRhdGEuZ2F0ZWtlZXBlci5zaC90aXRsZTogIk1hbnVhbCBUb3VjaCBDaGVjayIKICAgIG1ldGFkYXRhLmdhdGVrZWVwZXIuc2gvdmVyc2lvbjogIjEuMC4wIgogICAgZGVzY3JpcHRpb246ICJSZXF1aXJlcyBhIHJlY2VudCBtYXRjaGluZyBtYW51YWwgdG91Y2ggZXZlbnQgYmVmb3JlIGFsbG93aW5nIHByb3RlY3RlZCBvcGVyYXRpb25zLiIKc3BlYzoKICBjcmQ6CiAgICBzcGVjOgogICAgICBuYW1lczoKICAgICAgICBraW5kOiBFV01hbnVhbFRvdWNoQ2hlY2sKICAgICAgdmFsaWRhdGlvbjoKICAgICAgICBvcGVuQVBJVjNTY2hlbWE6CiAgICAgICAgICB0eXBlOiBvYmplY3QKICAgICAgICAgIHByb3BlcnRpZXM6CiAgICAgICAgICAgIG9wZXJhdGlvbnM6CiAgICAgICAgICAgICAgdHlwZTogYXJyYXkKICAgICAgICAgICAgICBpdGVtczoge3R5cGU6IHN0cmluZ30KICAgICAgICAgICAgd2luZG93RHVyYXRpb246IHt0eXBlOiBzdHJpbmd9CiAgICAgICAgICAgIHByb3ZpZGVyOiB7dHlwZTogc3RyaW5nfQogICAgICAgICAgICBmYWlsdXJlTW9kZToKICAgICAgICAgICAgICB0eXBlOiBzdHJpbmcKICAgICAgICAgICAgICBlbnVtOiBbSWdub3JlLCBEZW55XQogIHRhcmdldHM6CiAgICAtIHRhcmdldDogYWRtaXNzaW9uLms4cy5nYXRla2VlcGVyLnNoCiAgICAgIGNvZGU6CiAgICAgICAgLSBlbmdpbmU6IFJlZ28KICAgICAgICAgIHNvdXJjZToKICAgICAgICAgICAgcmVnbzogfAogICAgICAgICAgICAgIHBhY2thZ2UgZXdtYW51YWx0b3VjaGNoZWNrCgogICAgICAgICAgICAgIHBhcmFtcyA6PSBvYmplY3QuZ2V0KGlucHV0LCAicGFyYW1ldGVycyIsIHt9KQoKICAgICAgICAgICAgICBwcm92aWRlcl9uYW1lIDo9IHAgewogICAgICAgICAgICAgICAgcCA6PSBvYmplY3QuZ2V0KHBhcmFtcywgInByb3ZpZGVyIiwgIiIpCiAgICAgICAgICAgICAgICBwICE9ICIiCiAgICAgICAgICAgICAgfSBlbHNlIDo9ICJtYW51YWwtdG91Y2gtcHJvdmlkZXIiCgogICAgICAgICAgICAgIGZhaWx1cmVfbW9kZSA6PSBtIHsKICAgICAgICAgICAgICAgIG0gOj0gb2JqZWN0LmdldChwYXJhbXMsICJmYWlsdXJlTW9kZSIsICIiKQogICAgICAgICAgICAgICAgbSAhPSAiIgogICAgICAgICAgICAgIH0gZWxzZSA6PSAiSWdub3JlIgoKICAgICAgICAgICAgICBmYWlsX2Nsb3NlZCB7CiAgICAgICAgICAgICAgICBsb3dlcihmYWlsdXJlX21vZGUpID09ICJkZW55IgogICAgICAgICAgICAgIH0KCiAgICAgICAgICAgICAgd2luZG93X2R1ciA6PSBkIHsKICAgICAgICAgICAgICAgIGQgOj0gb2JqZWN0LmdldChwYXJhbXMsICJ3aW5kb3dEdXJhdGlvbiIsICIiKQogICAgICAgICAgICAgICAgZCAhPSAiIgogICAgICAgICAgICAgIH0gZWxzZSA6PSAiMWgiCgogICAgICAgICAgICAgIG9wcyA6PSBvYmplY3QuZ2V0KHBhcmFtcywgIm9wZXJhdGlvbnMiLCBbXSkKCiAgICAgICAgICAgICAgIyBJbiBFYXJseVdhdGNoLCB0aGUgc3Vycm91bmRpbmcgQ2hhbmdlVmFsaWRhdG9yJ3Mgb3BlcmF0aW9ucyBsaXN0CiAgICAgICAgICAgICAgIyBkZXRlcm1pbmVzIHdoZW4gdGhlIHJ1bGUgcnVucy4gR2F0ZWtlZXBlciBoYXMgbm8gb3BlcmF0aW9uIG1hdGNoZXIsCiAgICAgICAgICAgICAgIyBzbyBtaXJyb3IgdGhhdCBndWFyZC1sZXZlbCBiZWhhdmlvciB3aXRoIGEgcGFyYW1ldGVyLgogICAgICAgICAgICAgIG9wZXJhdGlvbl9hcHBsaWVzIHsgb3BzW19dID09IGlucHV0LnJldmlldy5vcGVyYXRpb24gfQoKICAgICAgICAgICAgICByZXZpZXdfcmVzb3VyY2UgOj0gb2JqZWN0LmdldChpbnB1dC5yZXZpZXcsICJyZXNvdXJjZSIsIHt9KQogICAgICAgICAgICAgIHRhcmdldF9raW5kIDo9IG9iamVjdC5nZXQob2JqZWN0LmdldChpbnB1dC5yZXZpZXcsICJraW5kIiwge30pLCAia2luZCIsICJyZXNvdXJjZSIpCiAgICAgICAgICAgICAgdGFyZ2V0X3Jlc291cmNlIDo9IG9iamVjdC5nZXQocmV2aWV3X3Jlc291cmNlLCAicmVzb3VyY2UiLCAiIikKICAgICAgICAgICAgICB0YXJnZXRfYXBpX2dyb3VwIDo9IG9iamVjdC5nZXQocmV2aWV3X3Jlc291cmNlLCAiZ3JvdXAiLCAiIikKICAgICAgICAgICAgICB0YXJnZXRfbmFtZSA6PSBuIHsKICAgICAgICAgICAgICAgIG4gOj0gb2JqZWN0LmdldChpbnB1dC5yZXZpZXcsICJuYW1lIiwgIiIpCiAgICAgICAgICAgICAgICBuICE9ICIiCiAgICAgICAgICAgICAgfSBlbHNlIDo9IG9iamVjdC5nZXQob2JqZWN0LmdldChpbnB1dC5yZXZpZXcsICJvbGRPYmplY3QiLCB7fSksIFsibWV0YWRhdGEiLCAibmFtZSJdLCBvYmplY3QuZ2V0KG9iamVjdC5nZXQoaW5wdXQucmV2aWV3LCAib2JqZWN0Iiwge30pLCBbIm1ldGFkYXRhIiwgIm5hbWUiXSwgIiIpKQogICAgICAgICAgICAgIHRhcmdldF9ucyA6PSBuIHsKICAgICAgICAgICAgICAgIG4gOj0gb2JqZWN0LmdldChpbnB1dC5yZXZpZXcsICJuYW1lc3BhY2UiLCAiIikKICAgICAgICAgICAgICAgIG4gIT0gIiIKICAgICAgICAgICAgICB9IGVsc2UgOj0gb2JqZWN0LmdldChvYmplY3QuZ2V0KGlucHV0LnJldmlldywgIm9sZE9iamVjdCIsIHt9KSwgWyJtZXRhZGF0YSIsICJuYW1lc3BhY2UiXSwgb2JqZWN0LmdldChvYmplY3QuZ2V0KGlucHV0LnJldmlldywgIm9iamVjdCIsIHt9KSwgWyJtZXRhZGF0YSIsICJuYW1lc3BhY2UiXSwgIiIpKQoKICAgICAgICAgICAgICByZXF1ZXN0X3VpZCA6PSBvYmplY3QuZ2V0KGlucHV0LnJldmlldywgInVpZCIsICIiKQoKICAgICAgICAgICAgICAjIHRvdWNoLW1vbml0b3IgZXhwZWN0cyB0aGUgZmlyc3Qgc2l4IGVuY29kZWQgZmllbGRzIGFuZCBpZ25vcmVzCiAgICAgICAgICAgICAgIyB0aGUgb3B0aW9uYWwgcmVxdWVzdCBVSUQgZmllbGQuIEluY2x1ZGluZyBVSUQgcHJldmVudHMgYSBzdGFsZQogICAgICAgICAgICAgICMgZXh0ZXJuYWwtZGF0YSBsb29rdXAgKGZvciBleGFtcGxlLCBhbiBlYXJsaWVyICJ1bnRvdWNoZWQiCiAgICAgICAgICAgICAgIyByZXNwb25zZSkgZnJvbSBiZWluZyByZXVzZWQgYWZ0ZXIgYSBtYW51YWwgdG91Y2ggaXMgcmVjb3JkZWQuCiAgICAgICAgICAgICAgIyAgIG1hbnVhbHRvdWNofDxiNjQgb3BlcmF0aW9uPnw8YjY0IGFwaUdyb3VwPnw8YjY0IHJlc291cmNlPnw8YjY0IG5hbWVzcGFjZT58PGI2NCBuYW1lPnw8YjY0IHdpbmRvd0R1cmF0aW9uPnw8YjY0IHJlcXVlc3RVSUQ+CiAgICAgICAgICAgICAgbWFudWFsX3RvdWNoX2tleSA6PSBzcHJpbnRmKCJtYW51YWx0b3VjaHwlc3wlc3wlc3wlc3wlc3wlc3wlcyIsIFsKICAgICAgICAgICAgICAgIGJhc2U2NC5lbmNvZGUoaW5wdXQucmV2aWV3Lm9wZXJhdGlvbiksCiAgICAgICAgICAgICAgICBiYXNlNjQuZW5jb2RlKHRhcmdldF9hcGlfZ3JvdXApLAogICAgICAgICAgICAgICAgYmFzZTY0LmVuY29kZSh0YXJnZXRfcmVzb3VyY2UpLAogICAgICAgICAgICAgICAgYmFzZTY0LmVuY29kZSh0YXJnZXRfbnMpLAogICAgICAgICAgICAgICAgYmFzZTY0LmVuY29kZSh0YXJnZXRfbmFtZSksCiAgICAgICAgICAgICAgICBiYXNlNjQuZW5jb2RlKHdpbmRvd19kdXIpLAogICAgICAgICAgICAgICAgYmFzZTY0LmVuY29kZShyZXF1ZXN0X3VpZCksCiAgICAgICAgICAgICAgXSkKCiAgICAgICAgICAgICAgbWFudWFsX3RvdWNoX3Jlc3BvbnNlIDo9IHJlc3BvbnNlIHsKICAgICAgICAgICAgICAgIG9wZXJhdGlvbl9hcHBsaWVzCiAgICAgICAgICAgICAgICByZXNwb25zZSA6PSBleHRlcm5hbF9kYXRhKHsKICAgICAgICAgICAgICAgICAgInByb3ZpZGVyIjogcHJvdmlkZXJfbmFtZSwKICAgICAgICAgICAgICAgICAgImtleXMiOiBbbWFudWFsX3RvdWNoX2tleV0sCiAgICAgICAgICAgICAgICB9KQogICAgICAgICAgICAgIH0KCiAgICAgICAgICAgICAgdmlvbGF0aW9uW3sibXNnIjogbXNnfV0gewogICAgICAgICAgICAgICAgcmVzcG9uc2UgOj0gbWFudWFsX3RvdWNoX3Jlc3BvbnNlCiAgICAgICAgICAgICAgICByZXNwb25zZS5yZXNwb25zZXNbX11bMV0gPT0gInRvdWNoZWQiCiAgICAgICAgICAgICAgICBtc2cgOj0gc3ByaW50ZigiJXMgJXEgd2FzIG1hbnVhbGx5IHRvdWNoZWQgd2l0aGluICVzOyAlcyBkZW5pZWQiLAogICAgICAgICAgICAgICAgICBbdGFyZ2V0X2tpbmQsIHRhcmdldF9uYW1lLCB3aW5kb3dfZHVyLCBsb3dlcihpbnB1dC5yZXZpZXcub3BlcmF0aW9uKV0pCiAgICAgICAgICAgICAgfQoKICAgICAgICAgICAgICAjIFByb3ZpZGVyIGZhaWx1cmVzIGRlZmF1bHQgdG8gZmFpbC1vcGVuIChmYWlsdXJlTW9kZTogSWdub3JlKSBzbyBhCiAgICAgICAgICAgICAgIyBtb25pdG9yIG91dGFnZSBkb2VzIG5vdCBibG9jayBhbGwgbWF0Y2hpbmcgYWRtaXNzaW9ucy4gU2V0CiAgICAgICAgICAgICAgIyBmYWlsdXJlTW9kZTogRGVueSBmb3IgZmFpbC1jbG9zZWQgYmVoYXZpb3IuCiAgICAgICAgICAgICAgdmlvbGF0aW9uW3sibXNnIjogbXNnfV0gewogICAgICAgICAgICAgICAgZmFpbF9jbG9zZWQKICAgICAgICAgICAgICAgIHJlc3BvbnNlIDo9IG1hbnVhbF90b3VjaF9yZXNwb25zZQogICAgICAgICAgICAgICAgb2JqZWN0LmdldChyZXNwb25zZSwgInN5c3RlbV9lcnJvciIsICIiKSAhPSAiIgogICAgICAgICAgICAgICAgbXNnIDo9IHNwcmludGYoIm1hbnVhbC10b3VjaCBwcm92aWRlciBzeXN0ZW0gZXJyb3I6ICV2IiwgW3Jlc3BvbnNlLnN5c3RlbV9lcnJvcl0pCiAgICAgICAgICAgICAgfQoKICAgICAgICAgICAgICB2aW9sYXRpb25beyJtc2ciOiBtc2d9XSB7CiAgICAgICAgICAgICAgICBmYWlsX2Nsb3NlZAogICAgICAgICAgICAgICAgcmVzcG9uc2UgOj0gbWFudWFsX3RvdWNoX3Jlc3BvbnNlCiAgICAgICAgICAgICAgICBjb3VudChvYmplY3QuZ2V0KHJlc3BvbnNlLCAiZXJyb3JzIiwgW10pKSA+IDAKICAgICAgICAgICAgICAgIG1zZyA6PSBzcHJpbnRmKCJtYW51YWwtdG91Y2ggcHJvdmlkZXIgcmV0dXJuZWQgZXJyb3JzOiAldiIsIFtyZXNwb25zZS5lcnJvcnNdKQogICAgICAgICAgICAgIH0KCiAgICAgICAgICAgICAgdmlvbGF0aW9uW3sibXNnIjogbXNnfV0gewogICAgICAgICAgICAgICAgZmFpbF9jbG9zZWQKICAgICAgICAgICAgICAgIHJlc3BvbnNlIDo9IG1hbnVhbF90b3VjaF9yZXNwb25zZQogICAgICAgICAgICAgICAgY291bnQob2JqZWN0LmdldChyZXNwb25zZSwgInJlc3BvbnNlcyIsIFtdKSkgPT0gMAogICAgICAgICAgICAgICAgbXNnIDo9ICJtYW51YWwtdG91Y2ggcHJvdmlkZXIgcmV0dXJuZWQgbm8gcmVzcG9uc2VzIChmYWlsIGNsb3NlZCkiCiAgICAgICAgICAgICAgfQo="
           },
-          "apiGroups": ["apps"],
-          "kinds": ["Deployment"],
+          "apiGroups": [
+            "apps"
+          ],
+          "kinds": [
+            "Deployment"
+          ],
           "namespaces": "[parameters('namespaces')]",
           "excludedNamespaces": "[parameters('excludedNamespaces')]",
           "labelSelector": "[parameters('labelSelector')]",
-          "values": {"operations": ["UPDATE"], "windowDuration": "2h", "provider": "manual-touch-provider", "failureMode": "Ignore"}
+          "values": {
+            "operations": [
+              "UPDATE"
+            ],
+            "windowDuration": "1h",
+            "provider": "manual-touch-provider",
+            "failureMode": "Ignore"
+          }
         }
       }
     }
