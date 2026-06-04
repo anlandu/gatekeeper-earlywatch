@@ -1,10 +1,10 @@
 {
-  "_comment": "Assignment for Azure built-in 'Kubernetes resources should have required annotations' (9a5f4e39-e427-4d5d-ae73-93db00328bec). Scoped to the ew-anno-* fixture namespaces to avoid blocking other rules' namespace creation.",
+  "_comment": "Assignment for Azure built-in 'Kubernetes cluster resources should have the specified annotations'. Built-in policy definition ID: /providers/Microsoft.Authorization/policyDefinitions/9a5f4e39-e427-4d5d-ae73-93db00328bec",
   "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/9a5f4e39-e427-4d5d-ae73-93db00328bec",
   "parameters": {
     "effect": { "value": "Deny" },
     "excludedNamespaces": { "value": ["kube-system", "gatekeeper-system", "azure-arc", "azure-extensions-usage-system"] },
-    "namespaces": { "value": ["ew-anno-bf-bad", "ew-anno-bf-good", "ew-anno-gf-bad", "ew-anno-gf-good"] },
+    "namespaces": { "value": [] },
     "labelSelector": { "value": {} },
     "kind": { "value": "Namespace" },
     "annotations": { "value": { "annotations": [ { "key": "earlywatch.io/owner", "allowedRegex": ".+" } ] } }

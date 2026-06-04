@@ -16,9 +16,6 @@ log() { printf '\n=== [%s] %s ===\n' "$RULE" "$*"; }
 log "ensuring namespace"
 kubectl create ns "$NS" --dry-run=client -o yaml | kubectl apply -f -
 
-log "brownfield seed (pre-assignment, allowed)"
-[ -f "$HERE/fixtures/brownfield/bad.yaml" ] && kubectl -n "$NS" apply -f "$HERE/fixtures/brownfield/bad.yaml"
-[ -f "$HERE/fixtures/brownfield/good.yaml" ] && kubectl -n "$NS" apply -f "$HERE/fixtures/brownfield/good.yaml"
 
 log "create policy definition (idempotent)"
 if [ -f "$HERE/definition.json" ]; then
@@ -57,22 +54,22 @@ for _ in $(seq 1 30); do
   sleep 10
 done
 
-if [ -f "$HERE/fixtures/greenfield/bad.yaml" ]; then
-  log "reset shared CM to K1+K2 so the BAD apply is an actual UPDATE that drops K1"
-  kubectl -n "$NS" apply -f "$HERE/fixtures/greenfield/good.yaml"
-  log "wait for pod 'refs' to appear in Gatekeeper sync inventory (best-effort)"
+if [ -f "$HERE/bad.yaml" ]; then
+  log "greenfield GOOD seed (creates shared-gf CM with K1+K2 and pod refs-gf that references K1)"
+  kubectl -n "$NS" apply -f "$HERE/good.yaml"
+  log "wait for pod 'refs-gf' to appear in Gatekeeper sync inventory (best-effort)"
   sleep 60
-  log "greenfield BAD (expect deny - drops K1 still referenced by pod refs)"
-  if kubectl -n "$NS" apply -f "$HERE/fixtures/greenfield/bad.yaml" 2>&1 | tee /tmp/$RULE.bad.log; then
+  log "greenfield BAD (expect deny - drops K1 still referenced by pod refs-gf)"
+  if kubectl -n "$NS" apply -f "$HERE/bad.yaml" 2>&1 | tee /tmp/$RULE.bad.log; then
     echo "EXPECTED DENY BUT GOT ALLOW for $RULE" >&2
     exit 1
   fi
   grep -qi 'denied' /tmp/$RULE.bad.log || echo "warn: denial output did not include 'denied'"
 fi
 
-if [ -f "$HERE/fixtures/greenfield/good.yaml" ]; then
+if [ -f "$HERE/good.yaml" ]; then
   log "greenfield GOOD (expect allow)"
-  kubectl -n "$NS" apply -f "$HERE/fixtures/greenfield/good.yaml"
+  kubectl -n "$NS" apply -f "$HERE/good.yaml"
 fi
 
-log "done (brownfield ARG compliance verified by top-level orchestrator)"
+log "done"

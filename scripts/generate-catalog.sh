@@ -44,7 +44,8 @@ constraint_paths = {
     "ewchecklock": "library/gatekeeper-earlywatch/check-lock/constraint.yaml",
     "ewdatakeysafetycheck": "library/gatekeeper-earlywatch/data-key-safety-check/constraint.yaml",
     "ewexistingresources": "library/gatekeeper-earlywatch/existing-resources/constraint.yaml",
-    "ewexpressioncheck": "library/gatekeeper-earlywatch/expression-check/constraint.yaml",
+    "ewblockdeleteinproduction": "library/gatekeeper-earlywatch/expression-check/constraint.yaml",
+    "ewblockdeletecriticalinprod": "library/gatekeeper-earlywatch/expression-check/constraint-regex.yaml",
     "ewmanualtouchcheck": "library/gatekeeper-earlywatch/manual-touch-check/constraint.yaml",
     "ewnamereferencecheck": "library/gatekeeper-earlywatch/name-reference-check/constraint.yaml",
     "ewservicepodselectorcheck": "library/gatekeeper-earlywatch/service-pod-selector-check/constraint.yaml",
@@ -57,12 +58,6 @@ aliases = [
         "description": "Catalog alias used by the earlywatch-default bundle for the EWExistingResources static-selector constraint.",
         "constraint_path": "library/gatekeeper-earlywatch/existing-resources/constraint-static.yaml",
     },
-    {
-        "name": "ewexpressioncheck-regex",
-        "source": "ewexpressioncheck",
-        "description": "Catalog alias used by the earlywatch-default bundle for the EWExpressionCheck regex constraint.",
-        "constraint_path": "library/gatekeeper-earlywatch/expression-check/constraint-regex.yaml",
-    },
 ]
 
 bundle_policies = [
@@ -72,8 +67,8 @@ bundle_policies = [
     "ewdatakeysafetycheck",
     "ewexistingresources",
     "ewexistingresources-static",
-    "ewexpressioncheck",
-    "ewexpressioncheck-regex",
+    "ewblockdeleteinproduction",
+    "ewblockdeletecriticalinprod",
     "ewmanualtouchcheck",
     "ewnamereferencecheck",
     "ewservicepodselectorcheck",

@@ -3,13 +3,16 @@
     "displayName": "EarlyWatch: ExistingResources (static selector) - block Service delete with production Pods",
     "policyType": "Custom",
     "mode": "Microsoft.Kubernetes.Data",
-    "description": "Denies Service DELETE when a Pod with tier label in {production,staging} exists in the same namespace.",
+    "description": "Denies operations on a Service when a Pod with a configurable label key/value still exists in the namespace.",
     "metadata": { "category": "Kubernetes" },
     "parameters": {
       "effect": { "type": "String", "allowedValues": ["audit", "deny", "disabled"], "defaultValue": "deny" },
       "excludedNamespaces": { "type": "Array", "defaultValue": ["kube-system", "gatekeeper-system", "azure-arc", "azure-extensions-usage-system"] },
       "namespaces": { "type": "Array", "defaultValue": [] },
-      "labelSelector": { "type": "Object", "defaultValue": {} }
+      "labelSelector": { "type": "Object", "defaultValue": {} },
+      "operations": { "type": "Array", "metadata": { "displayName": "Operations to deny" }, "defaultValue": ["DELETE"] },
+      "labelKey": { "type": "String", "metadata": { "displayName": "Pod label key to inspect" }, "defaultValue": "tier" },
+      "labelValues": { "type": "Array", "metadata": { "displayName": "Pod label values that trigger deny" }, "defaultValue": ["production", "staging"] }
     },
     "policyRule": {
       "if": {
@@ -23,13 +26,17 @@
       "then": {
         "effect": "[parameters('effect')]",
         "details": {
-          "templateInfo": { "sourceType": "Base64Encoded", "content": "IyBFYXJseVdhdGNoIEV4aXN0aW5nUmVzb3VyY2VzIChzdGF0aWMtc2VsZWN0b3IgdmFyaWFudCwgc2ltcGxpZmllZCBmb3IgQXp1cmUgUG9saWN5IGRlbW8pLgojCiMgRGVuaWVzIERFTEVURSBvZiBhIFNlcnZpY2UgaW4gdGhlIG5hbWVzcGFjZSB3aGVuIGFueSBQb2QgaW4gdGhlIHNhbWUKIyBuYW1lc3BhY2UgY2FycmllcyBsYWJlbCB0aWVyIGluIHtwcm9kdWN0aW9uLCBzdGFnaW5nfS4gSGFyZGNvZGVkIGZvcgojIGtpbmQ9UG9kLCBndj12MSwgc2FtZU5hbWVzcGFjZT10cnVlLiBPbmx5IGBvcGVyYXRpb25zYCByZW1haW5zIHBhcmFtZXRlcml6ZWQuCmFwaVZlcnNpb246IHRlbXBsYXRlcy5nYXRla2VlcGVyLnNoL3YxCmtpbmQ6IENvbnN0cmFpbnRUZW1wbGF0ZQptZXRhZGF0YToKICBuYW1lOiBld2V4aXN0aW5ncmVzb3VyY2Vzc3RhdGljCiAgYW5ub3RhdGlvbnM6CiAgICBtZXRhZGF0YS5nYXRla2VlcGVyLnNoL3RpdGxlOiAiRXhpc3RpbmcgUmVzb3VyY2VzIChzdGF0aWMgc2VsZWN0b3IpIgogICAgbWV0YWRhdGEuZ2F0ZWtlZXBlci5zaC92ZXJzaW9uOiAiMi4wLjAiCiAgICBkZXNjcmlwdGlvbjogIkRlbmllcyBvcGVyYXRpb25zIG9uIGEgU2VydmljZSB3aGVuIGEgcHJvZHVjdGlvbi10aWVyIFBvZCBzdGlsbCBleGlzdHMgaW4gdGhlIG5hbWVzcGFjZS4iCiAgICBhenVyZS1wb2xpY3kuYXp1cmUuY29tL3JlcXVpcmVzLXN5bmMtZGF0YTogfAogICAgICBbW3siZ3JvdXBzIjpbIiJdLCJ2ZXJzaW9ucyI6WyJ2MSJdLCJraW5kcyI6WyJQb2QiXX1dXQpzcGVjOgogIGNyZDoKICAgIHNwZWM6CiAgICAgIG5hbWVzOgogICAgICAgIGtpbmQ6IEVXRXhpc3RpbmdSZXNvdXJjZXNTdGF0aWMKICAgICAgdmFsaWRhdGlvbjoKICAgICAgICBvcGVuQVBJVjNTY2hlbWE6CiAgICAgICAgICB0eXBlOiBvYmplY3QKICAgICAgICAgIHByb3BlcnRpZXM6CiAgICAgICAgICAgIG9wZXJhdGlvbnM6CiAgICAgICAgICAgICAgdHlwZTogYXJyYXkKICAgICAgICAgICAgICBpdGVtczoge3R5cGU6IHN0cmluZ30KICB0YXJnZXRzOgogICAgLSB0YXJnZXQ6IGFkbWlzc2lvbi5rOHMuZ2F0ZWtlZXBlci5zaAogICAgICBjb2RlOgogICAgICAgIC0gZW5naW5lOiBSZWdvCiAgICAgICAgICBzb3VyY2U6CiAgICAgICAgICAgIHJlZ286IHwKICAgICAgICAgICAgICBwYWNrYWdlIGV3ZXhpc3RpbmdyZXNvdXJjZXNzdGF0aWMKCiAgICAgICAgICAgICAgaW1wb3J0IGZ1dHVyZS5rZXl3b3Jkcy5pbgoKICAgICAgICAgICAgICByZXZpZXdfb2JqZWN0IDo9IG9iamVjdC5nZXQoaW5wdXQucmV2aWV3LCAib2JqZWN0IiwgbnVsbCkKICAgICAgICAgICAgICByZXZpZXdfb2xkX29iamVjdCA6PSBvYmplY3QuZ2V0KGlucHV0LnJldmlldywgIm9sZE9iamVjdCIsIG51bGwpCiAgICAgICAgICAgICAgc3ViamVjdCA6PSBzIHsKICAgICAgICAgICAgICAgIHJldmlld19vYmplY3QgIT0gbnVsbAogICAgICAgICAgICAgICAgcyA6PSByZXZpZXdfb2JqZWN0CiAgICAgICAgICAgICAgfSBlbHNlIDo9IHMgewogICAgICAgICAgICAgICAgcyA6PSByZXZpZXdfb2xkX29iamVjdAogICAgICAgICAgICAgIH0KCiAgICAgICAgICAgICAgc3ViamVjdF9tZXRhZGF0YSA6PSBvYmplY3QuZ2V0KHN1YmplY3QsICJtZXRhZGF0YSIsIHt9KQogICAgICAgICAgICAgIHN1YmplY3RfbmFtZSA6PSBvYmplY3QuZ2V0KHN1YmplY3RfbWV0YWRhdGEsICJuYW1lIiwgb2JqZWN0LmdldChpbnB1dC5yZXZpZXcsICJuYW1lIiwgIiIpKQogICAgICAgICAgICAgIHN1YmplY3RfbnMgOj0gb2JqZWN0LmdldChzdWJqZWN0X21ldGFkYXRhLCAibmFtZXNwYWNlIiwgb2JqZWN0LmdldChpbnB1dC5yZXZpZXcsICJuYW1lc3BhY2UiLCAiIikpCgogICAgICAgICAgICAgIG9wcyA6PSBvYmplY3QuZ2V0KGlucHV0LnBhcmFtZXRlcnMsICJvcGVyYXRpb25zIiwgWyJERUxFVEUiXSkKCiAgICAgICAgICAgICAgdGllcl92YWx1ZXMgOj0geyJwcm9kdWN0aW9uIiwgInN0YWdpbmcifQoKICAgICAgICAgICAgICBtYXRjaGluZ19wb2RbbmFtZV0gewogICAgICAgICAgICAgICAgcG9kIDo9IGRhdGEuaW52ZW50b3J5Lm5hbWVzcGFjZVtzdWJqZWN0X25zXVsidjEiXVsiUG9kIl1bbmFtZV0KICAgICAgICAgICAgICAgIHRpZXIgOj0gb2JqZWN0LmdldChvYmplY3QuZ2V0KHBvZC5tZXRhZGF0YSwgImxhYmVscyIsIHt9KSwgInRpZXIiLCAiIikKICAgICAgICAgICAgICAgIHRpZXIgaW4gdGllcl92YWx1ZXMKICAgICAgICAgICAgICB9CgogICAgICAgICAgICAgIHZpb2xhdGlvblt7Im1zZyI6IG1zZ31dIHsKICAgICAgICAgICAgICAgIGlucHV0LnJldmlldy5vcGVyYXRpb24gaW4gb3BzCiAgICAgICAgICAgICAgICBzb21lIG4KICAgICAgICAgICAgICAgIG1hdGNoaW5nX3BvZFtuXQogICAgICAgICAgICAgICAgbXNnIDo9IHNwcmludGYoIlNlcnZpY2UgJXEgaW4gJXEgY2Fubm90IGJlICVzZDogUG9kICVxIHdpdGggcHJvZHVjdGlvbi10aWVyIGxhYmVsIHN0aWxsIGV4aXN0cyIsCiAgICAgICAgICAgICAgICAgIFtzdWJqZWN0X25hbWUsIHN1YmplY3RfbnMsIGxvd2VyKGlucHV0LnJldmlldy5vcGVyYXRpb24pLCBuXSkKICAgICAgICAgICAgICB9Cg==" },
+          "templateInfo": { "sourceType": "PublicURL", "url": "https://raw.githubusercontent.com/anlandu/gatekeeper-earlywatch/refs/heads/main/library/gatekeeper-earlywatch/existing-resources/template-static.yaml" },
           "apiGroups": [""],
           "kinds": ["Service"],
           "namespaces": "[parameters('namespaces')]",
           "excludedNamespaces": "[parameters('excludedNamespaces')]",
           "labelSelector": "[parameters('labelSelector')]",
-          "values": { "operations": ["DELETE"] }
+          "values": {
+            "operations": "[parameters('operations')]",
+            "labelKey": "[parameters('labelKey')]",
+            "labelValues": "[parameters('labelValues')]"
+          }
         }
       }
     }

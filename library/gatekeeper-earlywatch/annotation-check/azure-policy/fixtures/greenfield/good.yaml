@@ -1,6 +1,0 @@
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: ew-anno-gf-good
-  annotations:
-    earlywatch.io/owner: "team-a"

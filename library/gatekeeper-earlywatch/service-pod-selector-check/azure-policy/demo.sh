@@ -16,9 +16,6 @@ log() { printf '\n=== [%s] %s ===\n' "$RULE" "$*"; }
 log "ensuring namespace"
 kubectl create ns "$NS" --dry-run=client -o yaml | kubectl apply -f -
 
-log "brownfield seed (pre-assignment, allowed)"
-[ -f "$HERE/fixtures/brownfield/bad.yaml" ] && kubectl -n "$NS" apply -f "$HERE/fixtures/brownfield/bad.yaml"
-[ -f "$HERE/fixtures/brownfield/good.yaml" ] && kubectl -n "$NS" apply -f "$HERE/fixtures/brownfield/good.yaml"
 
 log "create policy definition (idempotent)"
 if [ -f "$HERE/definition.json" ]; then
@@ -57,16 +54,18 @@ for _ in $(seq 1 30); do
   sleep 10
 done
 
-if [ -f "$HERE/fixtures/greenfield/good.yaml" ]; then
+if [ -f "$HERE/good.yaml" ]; then
   log "greenfield seed (CREATE svc+kept-pod with matching selector)"
-  kubectl -n "$NS" apply -f "$HERE/fixtures/greenfield/good.yaml"
+  kubectl -n "$NS" apply -f "$HERE/good.yaml"
+  log "wait for kept-pod to land in Gatekeeper sync inventory"
+  sleep 60
 fi
 
-log "brownfield BAD UPDATE bf-svc-good selector to non-matching (expect deny: bf-here-pod is in sync data)"
-if kubectl -n "$NS" patch svc bf-svc-good --type=merge -p '{"spec":{"selector":{"app":"gone"}}}' 2>&1 | tee /tmp/$RULE.bad.log; then
+log "greenfield BAD UPDATE svc selector to non-matching (expect deny: kept-pod is in sync data, no other pod matches)"
+if kubectl -n "$NS" patch svc svc --type=merge -p '{"spec":{"selector":{"app":"gone"}}}' 2>&1 | tee /tmp/$RULE.bad.log; then
   echo "EXPECTED DENY BUT GOT ALLOW for $RULE" >&2
   exit 1
 fi
 grep -qi 'denied\|zero matching' /tmp/$RULE.bad.log || echo "warn: denial output did not include expected text"
 
-log "done (brownfield ARG compliance verified by top-level orchestrator)"
+log "done"

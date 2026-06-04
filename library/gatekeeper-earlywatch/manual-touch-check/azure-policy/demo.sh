@@ -16,9 +16,6 @@ log() { printf '\n=== [%s] %s ===\n' "$RULE" "$*"; }
 log "ensuring namespace"
 kubectl create ns "$NS" --dry-run=client -o yaml | kubectl apply -f -
 
-log "brownfield seed (pre-assignment, allowed)"
-[ -f "$HERE/fixtures/brownfield/bad.yaml" ] && kubectl -n "$NS" apply -f "$HERE/fixtures/brownfield/bad.yaml"
-[ -f "$HERE/fixtures/brownfield/good.yaml" ] && kubectl -n "$NS" apply -f "$HERE/fixtures/brownfield/good.yaml"
 
 log "create policy definition (idempotent)"
 if [ -f "$HERE/definition.json" ]; then
@@ -58,8 +55,8 @@ for _ in $(seq 1 30); do
 done
 
 log "greenfield seed (CREATE deployments allowed)"
-kubectl -n "$NS" apply -f "$HERE/fixtures/greenfield/bad.yaml"
-[ -f "$HERE/fixtures/greenfield/good.yaml" ] && kubectl -n "$NS" apply -f "$HERE/fixtures/greenfield/good.yaml"
+kubectl -n "$NS" apply -f "$HERE/bad.yaml"
+[ -f "$HERE/good.yaml" ] && kubectl -n "$NS" apply -f "$HERE/good.yaml"
 
 log "record synthetic manual-touch audit event for 'touched' deployment"
 kubectl -n early-watch-system port-forward svc/manual-touch-monitor 18443:8443 >/tmp/$RULE.pf.log 2>&1 &
@@ -69,21 +66,21 @@ sleep 3
 NOW_TS=$(date -u +%Y-%m-%dT%H:%M:%S.000000Z)
 curl -sk -m 10 -X POST https://localhost:18443/audit \
   -H 'Content-Type: application/json' \
-  -d "{\"items\":[{\"auditID\":\"demo-$(date +%s)\",\"stage\":\"ResponseComplete\",\"verb\":\"update\",\"user\":{\"username\":\"demo-user\",\"groups\":[\"system:authenticated\"]},\"userAgent\":\"kubectl/v1.30.0 (linux/amd64) demo\",\"sourceIPs\":[\"127.0.0.1\"],\"objectRef\":{\"resource\":\"deployments\",\"namespace\":\"$NS\",\"name\":\"touched\",\"apiGroup\":\"apps\",\"apiVersion\":\"v1\"},\"requestReceivedTimestamp\":\"$NOW_TS\"}]}" | tee /tmp/$RULE.audit.log
+  -d "{\"items\":[{\"auditID\":\"demo-$(date +%s)\",\"stage\":\"ResponseComplete\",\"verb\":\"update\",\"user\":{\"username\":\"demo-user\",\"groups\":[\"system:authenticated\"]},\"userAgent\":\"kubectl/v1.30.0 (linux/amd64) demo\",\"sourceIPs\":[\"127.0.0.1\"],\"objectRef\":{\"resource\":\"deployments\",\"namespace\":\"$NS\",\"name\":\"touched-gf\",\"apiGroup\":\"apps\",\"apiVersion\":\"v1\"},\"requestReceivedTimestamp\":\"$NOW_TS\"}]}" | tee /tmp/$RULE.audit.log
 kill $PF_PID 2>/dev/null || true
 trap - EXIT
 sleep 2
 
-log "greenfield BAD UPDATE 'touched' via annotate (expect deny: touched in window)"
-if kubectl -n "$NS" annotate deployment touched ew-bump=$(date +%s) --overwrite 2>&1 | tee /tmp/$RULE.bad.log; then
+log "greenfield BAD UPDATE 'touched-gf' via annotate (expect deny: touched in window)"
+if kubectl -n "$NS" annotate deployment touched-gf ew-bump=$(date +%s) --overwrite 2>&1 | tee /tmp/$RULE.bad.log; then
   echo "EXPECTED DENY BUT GOT ALLOW for $RULE" >&2
   exit 1
 fi
 grep -qi 'denied\|touched\|manually' /tmp/$RULE.bad.log || echo "warn: denial output did not include expected text"
 
-if [ -f "$HERE/fixtures/greenfield/good.yaml" ]; then
-  log "greenfield GOOD UPDATE 'untouched' (expect allow: no touch recorded)"
-  kubectl -n "$NS" annotate deployment untouched ew-bump=$(date +%s) --overwrite
+if [ -f "$HERE/good.yaml" ]; then
+  log "greenfield GOOD UPDATE 'untouched-gf' (expect allow: no touch recorded)"
+  kubectl -n "$NS" annotate deployment untouched-gf ew-bump=$(date +%s) --overwrite
 fi
 
-log "done (brownfield ARG compliance verified by top-level orchestrator)"
+log "done"

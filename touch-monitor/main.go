@@ -841,6 +841,13 @@ func (h *ManualTouchProviderHandler) ServeHTTP(w http.ResponseWriter, r *http.Re
 	if h.Now != nil {
 		now = h.Now().UTC()
 	}
+	start := time.Now()
+
+	logger.Info("external-data call received",
+		"endpoint", "/validate-manual-touch",
+		"remote", r.RemoteAddr,
+		"keys", len(req.Request.Keys),
+	)
 
 	resp := providerResponse{
 		APIVersion: "externaldata.gatekeeper.sh/v1beta1",
@@ -850,9 +857,15 @@ func (h *ManualTouchProviderHandler) ServeHTTP(w http.ResponseWriter, r *http.Re
 	// window, so responses should not be treated as idempotent/cacheable.
 	resp.Response.Idempotent = false
 
-	for _, key := range req.Request.Keys {
+	var touched, untouched, errored int
+	for i, key := range req.Request.Keys {
 		query, err := parseManualTouchProviderKey(key)
 		if err != nil {
+			errored++
+			logger.Warn("rejected key",
+				"idx", i,
+				"error", err.Error(),
+			)
 			resp.Response.Items = append(resp.Response.Items, providerItem{Key: key, Error: err.Error()})
 			continue
 		}
@@ -860,9 +873,31 @@ func (h *ManualTouchProviderHandler) ServeHTTP(w http.ResponseWriter, r *http.Re
 		value := "untouched"
 		if h.Cache != nil && h.Cache.HasRecent(query.Target, query.Window, now) {
 			value = "touched"
+			touched++
+		} else {
+			untouched++
 		}
+		logger.Info("evaluated key",
+			"idx", i,
+			"operation", query.Target.Operation,
+			"apiGroup", query.Target.APIGroup,
+			"resource", query.Target.Resource,
+			"namespace", query.Target.Namespace,
+			"name", query.Target.Name,
+			"window", query.Window.String(),
+			"result", value,
+		)
 		resp.Response.Items = append(resp.Response.Items, providerItem{Key: key, Value: value})
 	}
+
+	logger.Info("external-data call complete",
+		"endpoint", "/validate-manual-touch",
+		"keys", len(req.Request.Keys),
+		"touched", touched,
+		"untouched", untouched,
+		"errored", errored,
+		"duration_ms", time.Since(start).Milliseconds(),
+	)
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)

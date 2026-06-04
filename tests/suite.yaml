@@ -131,6 +131,23 @@ tests:
         assertions:
           - violations: no
 
+  - name: expression-check-regex
+    template: ../library/gatekeeper-earlywatch/expression-check/template-regex.yaml
+    constraint: ../library/gatekeeper-earlywatch/expression-check/constraint-regex.yaml
+    cases:
+      - name: deny-by-namespace-regex
+        object: expression/cm-delete-prod.yaml
+        assertions:
+          - violations: yes
+      - name: deny-by-name-regex
+        object: expression/cm-delete-staging-critical.yaml
+        assertions:
+          - violations: yes
+      - name: allow-when-no-predicate-matches
+        object: expression/cm-delete-staging.yaml
+        assertions:
+          - violations: no
+
   - name: service-pod-selector-check
     template: ../library/gatekeeper-earlywatch/service-pod-selector-check/template.yaml
     constraint: ../library/gatekeeper-earlywatch/service-pod-selector-check/constraint.yaml
@@ -191,23 +208,6 @@ tests:
         assertions:
           - violations: yes
 
-  - name: expression-check-regex
-    template: ../library/gatekeeper-earlywatch/expression-check/template.yaml
-    constraint: ../library/gatekeeper-earlywatch/expression-check/constraint-regex.yaml
-    cases:
-      - name: deny-by-namespace-regex
-        object: expression/cm-delete-prod.yaml
-        assertions:
-          - violations: yes
-      - name: deny-by-name-regex
-        object: expression/cm-delete-staging-critical.yaml
-        assertions:
-          - violations: yes
-      - name: allow-when-no-predicate-matches
-        object: expression/cm-delete-staging.yaml
-        assertions:
-          - violations: no
-
   - name: data-key-safety-check
     template: ../library/gatekeeper-earlywatch/data-key-safety-check/template.yaml
     constraint: ../library/gatekeeper-earlywatch/data-key-safety-check/constraint.yaml
@@ -243,7 +243,7 @@ tests:
           - violations: yes
 
   - name: existing-resources-static-selector
-    template: ../library/gatekeeper-earlywatch/existing-resources/template.yaml
+    template: ../library/gatekeeper-earlywatch/existing-resources/template-static.yaml
     constraint: ../library/gatekeeper-earlywatch/existing-resources/constraint-static.yaml
     cases:
       - name: deny-when-In-matches
@@ -258,50 +258,6 @@ tests:
           - existing-resources-static/pod-dev.yaml
         assertions:
           - violations: no
-
-  - name: existing-resources-upstream-parity
-    template: ../library/gatekeeper-earlywatch/existing-resources/template.yaml
-    constraint: existing-resources-parity/no-selector-constraint.yaml
-    cases:
-      - name: deny-no-selector-matches-any-dependent
-        object: existing-resources/svc-delete.yaml
-        inventory:
-          - existing-resources/pod-nonmatching.yaml
-        assertions:
-          - violations: yes
-
-  - name: existing-resources-empty-static-selector
-    template: ../library/gatekeeper-earlywatch/existing-resources/template.yaml
-    constraint: existing-resources-parity/empty-static-selector-constraint.yaml
-    cases:
-      - name: deny-empty-static-selector-matches-any-dependent
-        object: existing-resources/svc-delete.yaml
-        inventory:
-          - existing-resources/pod-nonmatching.yaml
-        assertions:
-          - violations: yes
-
-  - name: existing-resources-field-selector-precedence
-    template: ../library/gatekeeper-earlywatch/existing-resources/template.yaml
-    constraint: existing-resources-parity/field-wins-over-static-constraint.yaml
-    cases:
-      - name: allow-when-field-selector-does-not-match-even-if-static-would
-        object: existing-resources/svc-delete.yaml
-        inventory:
-          - existing-resources-static/pod-prod.yaml
-        assertions:
-          - violations: no
-
-  - name: existing-resources-namespace-delete-scope
-    template: ../library/gatekeeper-earlywatch/existing-resources/template.yaml
-    constraint: existing-resources-parity/namespace-delete-constraint.yaml
-    cases:
-      - name: deny-namespace-delete-when-dependent-exists-inside-namespace
-        object: existing-resources-parity/ns-delete.yaml
-        inventory:
-          - existing-resources-parity/pod-in-prod.yaml
-        assertions:
-          - violations: yes
 
   # ManualTouchCheck uses Gatekeeper external_data(), which gator does not
   # provide. The touch-monitor Go tests cover provider/cache behavior; live

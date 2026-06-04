@@ -1,9 +1,0 @@
-# prod-* namespace matches regex
-apiVersion: v1
-kind: Namespace
-metadata: {name: prod-eu}
----
-apiVersion: v1
-kind: ConfigMap
-metadata: {name: cm-1, namespace: prod-eu}
-data: {k: v}

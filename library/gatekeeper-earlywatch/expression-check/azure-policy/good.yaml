@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata: {name: ew-expression-check}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: cm-ok, namespace: ew-expression-check}
+data: {k: v}

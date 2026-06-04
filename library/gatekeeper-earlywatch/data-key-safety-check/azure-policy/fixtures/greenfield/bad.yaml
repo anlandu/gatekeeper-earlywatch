@@ -1,5 +1,0 @@
-apiVersion: v1
-kind: ConfigMap
-metadata: {name: shared}
-data:
-  K2: v2  # K1 dropped

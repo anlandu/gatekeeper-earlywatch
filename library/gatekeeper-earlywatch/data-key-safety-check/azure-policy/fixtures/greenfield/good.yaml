@@ -1,6 +1,0 @@
-apiVersion: v1
-kind: ConfigMap
-metadata: {name: shared}
-data:
-  K1: v1
-  K2: v2

@@ -34,6 +34,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // --- Gatekeeper external-data wire types (v1beta1) ---
@@ -388,8 +389,24 @@ func evaluate(key string) string {
 
 // --- HTTP ---
 
+// keySummary extracts non-secret fields from a provider key for logging:
+// the opcode and, where present, the signature length. It never logs the
+// PEM, the signed message, or the signature bytes.
+func keySummary(key string) (op string, fields int, sigLen int) {
+	op, parts, err := parseKey(key)
+	if err != nil {
+		return "unparseable", 0, 0
+	}
+	if len(parts) > 0 {
+		// last field is the signature for both delete and update keys
+		sigLen = len(parts[len(parts)-1])
+	}
+	return op, len(parts), sigLen
+}
+
 func handle(w http.ResponseWriter, r *http.Request) {
 	mRequests.Add(1)
+	start := time.Now()
 	var req providerRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		mError.Add(1)
@@ -397,21 +414,39 @@ func handle(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	slog.Info("external-data call received",
+		"endpoint", "/validate",
+		"remote", r.RemoteAddr,
+		"keys", len(req.Request.Keys),
+	)
 	resp := providerResponse{
 		APIVersion: "externaldata.gatekeeper.sh/v1beta1",
 		Kind:       "ProviderResponse",
 	}
 	resp.Response.Idempotent = true
-	for _, k := range req.Request.Keys {
+	var valid, invalid int
+	for i, k := range req.Request.Keys {
+		op, fields, sigLen := keySummary(k)
 		v := evaluate(k)
 		switch v {
 		case "valid":
 			mValid.Add(1)
+			valid++
+			slog.Info("verified key", "idx", i, "op", op, "fields", fields, "sig_len", sigLen, "result", "valid")
 		default:
 			mInvalid.Add(1)
+			invalid++
+			slog.Warn("rejected key", "idx", i, "op", op, "fields", fields, "sig_len", sigLen, "reason", v)
 		}
 		resp.Response.Items = append(resp.Response.Items, providerItem{Key: k, Value: v})
 	}
+	slog.Info("external-data call complete",
+		"endpoint", "/validate",
+		"keys", len(req.Request.Keys),
+		"valid", valid,
+		"invalid", invalid,
+		"duration_ms", time.Since(start).Milliseconds(),
+	)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)
 }

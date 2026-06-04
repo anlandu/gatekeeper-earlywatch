@@ -1,7 +1,7 @@
 apiVersion: constraints.gatekeeper.sh/v1beta1
-kind: EWBlockDeleteInProduction
+kind: EWExpressionCheck
 metadata:
-  name: block-delete-in-production-namespace
+  name: block-delete-critical-in-prod
 spec:
   match:
     kinds:

@@ -1,17 +1,17 @@
-# EarlyWatch ExistingResources (static-selector variant, simplified for Azure Policy demo).
+# EarlyWatch ExistingResources (static-selector variant).
 #
-# Denies DELETE of a Service in the namespace when any Pod in the same
-# namespace carries label tier in {production, staging}. Hardcoded for
-# kind=Pod, gv=v1, sameNamespace=true. Only `operations` remains parameterized.
+# Denies operations on a Service when any Pod in the same namespace carries
+# the configured label `labelKey` with one of the values in `labelValues`.
+# Hardcoded for kind=Pod, gv=v1, sameNamespace=true.
 apiVersion: templates.gatekeeper.sh/v1
 kind: ConstraintTemplate
 metadata:
   name: ewexistingresourcesstatic
   annotations:
     metadata.gatekeeper.sh/title: "Existing Resources (static selector)"
-    metadata.gatekeeper.sh/version: "2.0.0"
-    description: "Denies operations on a Service when a production-tier Pod still exists in the namespace."
-    azure-policy.azure.com/requires-sync-data: |
+    metadata.gatekeeper.sh/version: "3.0.0"
+    description: "Denies operations on a Service when a Pod with a configurable label key/value still exists in the namespace."
+    metadata.gatekeeper.sh/requires-sync-data: |
       [[{"groups":[""],"versions":["v1"],"kinds":["Pod"]}]]
 spec:
   crd:
@@ -23,6 +23,11 @@ spec:
           type: object
           properties:
             operations:
+              type: array
+              items: {type: string}
+            labelKey:
+              type: string
+            labelValues:
               type: array
               items: {type: string}
   targets:
@@ -49,19 +54,19 @@ spec:
               subject_ns := object.get(subject_metadata, "namespace", object.get(input.review, "namespace", ""))
 
               ops := object.get(input.parameters, "operations", ["DELETE"])
-
-              tier_values := {"production", "staging"}
+              label_key := object.get(input.parameters, "labelKey", "tier")
+              label_values := {v | v := object.get(input.parameters, "labelValues", ["production", "staging"])[_]}
 
               matching_pod[name] {
                 pod := data.inventory.namespace[subject_ns]["v1"]["Pod"][name]
-                tier := object.get(object.get(pod.metadata, "labels", {}), "tier", "")
-                tier in tier_values
+                val := object.get(object.get(pod.metadata, "labels", {}), label_key, "")
+                val in label_values
               }
 
               violation[{"msg": msg}] {
                 input.review.operation in ops
                 some n
                 matching_pod[n]
-                msg := sprintf("Service %q in %q cannot be %sd: Pod %q with production-tier label still exists",
-                  [subject_name, subject_ns, lower(input.review.operation), n])
+                msg := sprintf("Service %q in %q cannot be %sd: Pod %q has label %s in %v",
+                  [subject_name, subject_ns, lower(input.review.operation), n, label_key, label_values])
               }

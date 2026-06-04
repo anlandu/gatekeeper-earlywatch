@@ -1,6 +1,0 @@
-apiVersion: v1
-kind: Service
-metadata: {name: bf-svc-good}
-spec:
-  selector: {app: x}
-  ports: [{port: 80}]

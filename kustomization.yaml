@@ -27,6 +27,7 @@ resources:
   - library/gatekeeper-earlywatch/approval-check/template.yaml
   - library/gatekeeper-earlywatch/check-lock/template.yaml
   - library/gatekeeper-earlywatch/expression-check/template.yaml
+  - library/gatekeeper-earlywatch/expression-check/template-regex.yaml
   - library/gatekeeper-earlywatch/manual-touch-check/template.yaml
   - library/gatekeeper-earlywatch/manual-touch-check/provider.yaml
   - library/gatekeeper-earlywatch/service-pod-selector-check/template.yaml

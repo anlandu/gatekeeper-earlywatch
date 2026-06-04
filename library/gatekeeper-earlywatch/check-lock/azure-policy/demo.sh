@@ -16,9 +16,6 @@ log() { printf '\n=== [%s] %s ===\n' "$RULE" "$*"; }
 log "ensuring namespace"
 kubectl create ns "$NS" --dry-run=client -o yaml | kubectl apply -f -
 
-log "brownfield seed (pre-assignment, allowed)"
-[ -f "$HERE/fixtures/brownfield/bad.yaml" ] && kubectl -n "$NS" apply -f "$HERE/fixtures/brownfield/bad.yaml"
-[ -f "$HERE/fixtures/brownfield/good.yaml" ] && kubectl -n "$NS" apply -f "$HERE/fixtures/brownfield/good.yaml"
 
 log "create policy definition (idempotent)"
 if [ -f "$HERE/definition.json" ]; then
@@ -57,11 +54,11 @@ for _ in $(seq 1 30); do
   sleep 10
 done
 
-if [ -f "$HERE/fixtures/greenfield/bad.yaml" ]; then
+if [ -f "$HERE/bad.yaml" ]; then
   log "greenfield BAD seed (unlock+delete leftover so re-apply is clean CREATE)"
   kubectl -n "$NS" patch deployment locked-gf --type=json -p='[{"op":"remove","path":"/metadata/annotations/earlywatch.io~1lock"}]' >/dev/null 2>&1 || true
   kubectl -n "$NS" delete deployment locked-gf --ignore-not-found --wait=true >/dev/null 2>&1 || true
-  kubectl -n "$NS" apply -f "$HERE/fixtures/greenfield/bad.yaml"
+  kubectl -n "$NS" apply -f "$HERE/bad.yaml"
   log "wait for locked-gf to appear in Gatekeeper sync inventory (best-effort)"
   sleep 60
   log "greenfield BAD scale (expect deny: scale subresource handled via inventory lookup)"
@@ -72,9 +69,9 @@ if [ -f "$HERE/fixtures/greenfield/bad.yaml" ]; then
   grep -qi 'denied\|locked' /tmp/$RULE.bad.log || echo "warn: denial output did not include expected text"
 fi
 
-if [ -f "$HERE/fixtures/greenfield/good.yaml" ]; then
+if [ -f "$HERE/good.yaml" ]; then
   log "greenfield GOOD (expect allow)"
-  kubectl -n "$NS" apply -f "$HERE/fixtures/greenfield/good.yaml"
+  kubectl -n "$NS" apply -f "$HERE/good.yaml"
 fi
 
-log "done (brownfield ARG compliance verified by top-level orchestrator)"
+log "done"

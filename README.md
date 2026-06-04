@@ -41,7 +41,7 @@ These templates and their default constraints are included in `kustomization.yam
 | 3 | Require an annotation (optionally with a specific value)              | `library/gatekeeper-earlywatch/annotation-check/template.yaml`            | Yes |
 | 4 | Require a valid RSA-PSS signed approval annotation                    | `library/gatekeeper-earlywatch/approval-check/template.yaml`              | No — needs crypto/provider |
 | 5 | Honor a lock annotation that blocks delete (optionally update)        | `library/gatekeeper-earlywatch/check-lock/template.yaml`                  | No — compares old/new objects in Rego |
-| 6 | Deny based on structured expression predicates                        | `library/gatekeeper-earlywatch/expression-check/template.yaml`            | Yes |
+| 6 | Deny based on a translated EarlyWatch ExpressionCheck rule (example)  | `library/gatekeeper-earlywatch/expression-check/template.yaml`            | Yes |
 | 7 | Deny when touch-monitor reports a recent manual touch                 | `library/gatekeeper-earlywatch/manual-touch-check/template.yaml`          | No — needs external-data provider |
 | 8 | Deny Service updates that orphan all matching Pods                    | `library/gatekeeper-earlywatch/service-pod-selector-check/template.yaml`  | No — needs inventory lookups |
 | 9 | Deny ConfigMap/Secret updates that drop a key still in use            | `library/gatekeeper-earlywatch/data-key-safety-check/template.yaml`       | No — needs inventory lookups |
@@ -97,12 +97,16 @@ gator verify tests/suite.yaml
 - **`requireValue` boolean on AnnotationCheck.** Explicit "key must be
   present" vs "key must equal this value." Cleaner than nil-vs-empty
   string handling.
-- **ExpressionCheck uses structured predicates.** `EWExpressionCheck` exposes a
-  portable structured schema (`operationIn`, `namespaceIn`, `namespaceRegex`,
-  `nameIn`, `nameRegex`) with both Rego and native CEL implementations for
-  common EarlyWatch predicates. Gatekeeper cannot dynamically `eval()` a CEL
-  expression passed as a constraint parameter; custom arbitrary CEL should live
-  in separately authored `ConstraintTemplate`s outside the default parity stack.
+- **ExpressionCheck is one tiny template per rule, not a parametric DSL.**
+  EarlyWatch's ExpressionCheck grammar is `field == 'value'` over
+  `operation`/`namespace`/`name` and is strictly less expressive than CEL.
+  Neither CEL nor Rego can `eval()` a string supplied as a constraint
+  parameter, so a "generic" template would have to re-implement an expression
+  evaluator and would still be weaker than just writing CEL. Instead, each
+  EarlyWatch ExpressionCheck rule is translated into a dedicated
+  `ConstraintTemplate` whose predicate is a one-line CEL `expression`. The
+  canonical example is in
+  [library/gatekeeper-earlywatch/expression-check/](library/gatekeeper-earlywatch/expression-check/).
 - **`GuardRule.message` is not a parameter today.** Templates produce a
   default denial message; to customize, fork the template.
 
@@ -156,9 +160,9 @@ installation:
 gator policy install --bundle earlywatch-default --enforcement-action=warn
 ```
 
-The bundle includes two catalog-only aliases, `ewexistingresources-static` and
-`ewexpressioncheck-regex`, so Gator can install multiple default constraints for
-templates that have more than one default constraint.
+The bundle includes one catalog-only alias, `ewexistingresources-static`, so
+Gator can install both default constraints for `EWExistingResources` (the
+field-selector and the static-selector variants).
 
 The installable policy templates live in the Gatekeeper Library-compatible layout
 under [`library/gatekeeper-earlywatch/`](library/gatekeeper-earlywatch/). Gator

@@ -1,6 +1,6 @@
 {
   "effect": { "value": "deny" },
   "excludedNamespaces": { "value": ["kube-system", "gatekeeper-system", "azure-arc", "azure-extensions-usage-system"] },
-  "namespaces": { "value": ["ew-approval-check"] },
+  "namespaces": { "value": [] },
   "labelSelector": { "value": {} }
 }

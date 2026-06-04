@@ -1,18 +1,10 @@
 apiVersion: constraints.gatekeeper.sh/v1beta1
 kind: EWDataKeySafetyCheck
 metadata:
-  name: configmap-key-still-referenced-default-version
+  name: configmap-key-still-referenced-defaults
 spec:
   match:
     kinds:
       - apiGroups: [""]
         kinds: ["ConfigMap"]
-  parameters:
-    sameNamespace: true
-    resources:
-      - apiGroup: ""
-        kind: Pod
-        keyReferenceFields:
-          - refPath: spec.containers.env.valueFrom.configMapKeyRef
-            nameSubField: name
-            keySubField: key
+  parameters: {}

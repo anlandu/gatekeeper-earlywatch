@@ -10,9 +10,8 @@ SCOPE="/subscriptions/$SUB/resourceGroups/$RG"
 ASSIGN_NAME="ew-$RULE"
 log() { printf '\n=== [%s] %s ===\n' "$RULE" "$*"; }
 
+# Idempotent ns create (plain `kubectl create ns` errors if it already exists).
 kubectl create ns "$NS" --dry-run=client -o yaml | kubectl apply -f -
-[ -f "$HERE/fixtures/brownfield/bad.yaml" ] && kubectl -n "$NS" apply -f "$HERE/fixtures/brownfield/bad.yaml"
-[ -f "$HERE/fixtures/brownfield/good.yaml" ] && kubectl -n "$NS" apply -f "$HERE/fixtures/brownfield/good.yaml"
 
 if [ -z "${SKIP_POLICY_SETUP:-}" ]; then
   az policy definition create --name "$DEFNAME" --rules @"$HERE/definition.json" --mode Microsoft.Kubernetes.Data --subscription "$SUB" >/dev/null || true
@@ -27,16 +26,18 @@ if [ -z "${SKIP_POLICY_SETUP:-}" ]; then
 fi
 for _ in $(seq 1 30); do kubectl get constraints.gatekeeper.sh 2>/dev/null | grep -q "$DEFNAME" && break; sleep 10; done
 
-if [ -f "$HERE/fixtures/greenfield/bad.yaml" ]; then
-  log "greenfield BAD seed (CREATE svc+production-pod allowed) - additional cluster state"
-  kubectl -n "$NS" apply -f "$HERE/fixtures/greenfield/bad.yaml"
-  log "brownfield BAD DELETE bf-svc-bad (expect deny: bf-prod-pod with tier=production is in sync data)"
-  if kubectl -n "$NS" delete svc bf-svc-bad --wait=false 2>&1 | tee /tmp/$RULE.bad.log; then
+if [ -f "$HERE/bad.yaml" ]; then
+  log "greenfield BAD seed (CREATE svc+production-pod allowed)"
+  kubectl -n "$NS" apply -f "$HERE/bad.yaml"
+  log "wait for prod-pod to land in Gatekeeper sync inventory"
+  sleep 60
+  log "greenfield BAD DELETE svc-bad (expect deny: prod-pod with tier=production is in sync data)"
+  if kubectl -n "$NS" delete svc svc-bad --wait=false 2>&1 | tee /tmp/$RULE.bad.log; then
     echo "EXPECTED DENY BUT GOT ALLOW for $RULE" >&2; exit 1
   fi
 fi
-if [ -f "$HERE/fixtures/greenfield/good.yaml" ]; then
+if [ -f "$HERE/good.yaml" ]; then
   log "greenfield GOOD (expect allow)"
-  kubectl -n "$NS" apply -f "$HERE/fixtures/greenfield/good.yaml"
+  kubectl -n "$NS" apply -f "$HERE/good.yaml"
 fi
 log "done"

@@ -16,9 +16,6 @@ log() { printf '\n=== [%s] %s ===\n' "$RULE" "$*"; }
 log "ensuring namespace"
 kubectl create ns "$NS" --dry-run=client -o yaml | kubectl apply -f -
 
-log "brownfield seed (pre-assignment, allowed)"
-[ -f "$HERE/fixtures/brownfield/bad.yaml" ] && kubectl -n "$NS" apply -f "$HERE/fixtures/brownfield/bad.yaml"
-[ -f "$HERE/fixtures/brownfield/good.yaml" ] && kubectl -n "$NS" apply -f "$HERE/fixtures/brownfield/good.yaml"
 
 log "ensure approval-check signing keypair (no-op if orchestrator already did it)"
 KEY_DIR="$HERE/keys"
@@ -78,16 +75,16 @@ sign_delete_path() {
   printf '%s' "$1" | openssl dgst -sha256 -sigopt rsa_padding_mode:pss -sign "$KEY_DIR/priv.pem" -binary | base64 -w0
 }
 
-GOOD_PATH="v1/namespaces/$NS/configmaps/protected-good"
+GOOD_PATH="v1/namespaces/$NS/configmaps/protected-gf-good"
 GOOD_SIG=$(sign_delete_path "$GOOD_PATH")
 BAD_SIG="AAAA-bogus-signature-AAAA"
 
-log "seed CMs with delete-approval annotations (CREATE skips rule)"
+log "greenfield seed CMs with delete-approval annotations (CREATE skips rule)"
 cat <<EOF | kubectl -n "$NS" apply -f -
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: protected-good
+  name: protected-gf-good
   annotations:
     earlywatch.io/approved: "$GOOD_SIG"
 data: {k: v}
@@ -95,20 +92,20 @@ data: {k: v}
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: protected-bad
+  name: protected-gf-bad
   annotations:
     earlywatch.io/approved: "$BAD_SIG"
 data: {k: v}
 EOF
 
-log "DELETE protected-bad with bogus signature (expect deny)"
-if kubectl -n "$NS" delete cm protected-bad --wait=false 2>&1 | tee /tmp/$RULE.bad.log; then
+log "greenfield BAD: DELETE protected-gf-bad with bogus signature (expect deny)"
+if kubectl -n "$NS" delete cm protected-gf-bad --wait=false 2>&1 | tee /tmp/$RULE.bad.log; then
   echo "EXPECTED DENY BUT GOT ALLOW for $RULE" >&2
   exit 1
 fi
 grep -qi 'denied\|signature\|rejected' /tmp/$RULE.bad.log || echo "warn: denial output did not include expected text"
 
-log "DELETE protected-good with valid signature (expect allow)"
-kubectl -n "$NS" delete cm protected-good --wait=false
+log "greenfield GOOD: DELETE protected-gf-good with valid signature (expect allow)"
+kubectl -n "$NS" delete cm protected-gf-good --wait=false
 
-log "done (brownfield ARG compliance verified by top-level orchestrator)"
+log "done"

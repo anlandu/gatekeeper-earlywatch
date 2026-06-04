@@ -17,8 +17,8 @@ bundles:
   - ewdatakeysafetycheck
   - ewexistingresources
   - ewexistingresources-static
-  - ewexpressioncheck
-  - ewexpressioncheck-regex
+  - ewblockdeleteinproduction
+  - ewblockdeletecriticalinprod
   - ewmanualtouchcheck
   - ewnamereferencecheck
   - ewservicepodselectorcheck
@@ -89,9 +89,10 @@ policies:
   bundleConstraints:
     earlywatch-default: https://raw.githubusercontent.com/sozercan/gatekeeper-earlywatch/main/library/gatekeeper-earlywatch/existing-resources/constraint-static.yaml
 - category: gatekeeper-earlywatch
-  description: Evaluates structured operation, namespace, and name predicates against
-    admission requests.
-  name: ewexpressioncheck
+  description: Example translating a single EarlyWatch ExpressionCheck rule (block
+    DELETE in the production namespace) into a dedicated Gatekeeper ConstraintTemplate
+    with a one-line CEL predicate.
+  name: ewblockdeleteinproduction
   templatePath: https://raw.githubusercontent.com/sozercan/gatekeeper-earlywatch/main/library/gatekeeper-earlywatch/expression-check/template.yaml
   version: v1.0.0
   bundles:
@@ -99,9 +100,10 @@ policies:
   bundleConstraints:
     earlywatch-default: https://raw.githubusercontent.com/sozercan/gatekeeper-earlywatch/main/library/gatekeeper-earlywatch/expression-check/constraint.yaml
 - category: gatekeeper-earlywatch
-  description: Catalog alias used by the earlywatch-default bundle for the EWExpressionCheck regex constraint.
-  name: ewexpressioncheck-regex
-  templatePath: https://raw.githubusercontent.com/sozercan/gatekeeper-earlywatch/main/library/gatekeeper-earlywatch/expression-check/template.yaml
+  description: Example translating an EarlyWatch-style rule into CEL with regex —
+    denies DELETE of critical-* resources or anything in prod* namespaces.
+  name: ewblockdeletecriticalinprod
+  templatePath: https://raw.githubusercontent.com/sozercan/gatekeeper-earlywatch/main/library/gatekeeper-earlywatch/expression-check/template-regex.yaml
   version: v1.0.0
   bundles:
   - earlywatch-default

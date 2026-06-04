@@ -1,5 +1,0 @@
-apiVersion: v1
-kind: ConfigMap
-metadata: {name: bf-good-cm}
-data:
-  K1: v1

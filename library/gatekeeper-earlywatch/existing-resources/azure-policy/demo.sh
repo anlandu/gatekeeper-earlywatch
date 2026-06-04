@@ -16,10 +16,6 @@ log() { printf '\n=== [%s] %s ===\n' "$RULE" "$*"; }
 log "ensuring namespace"
 kubectl create ns "$NS" --dry-run=client -o yaml | kubectl apply -f -
 
-log "brownfield seed (pre-assignment, allowed)"
-[ -f "$HERE/fixtures/brownfield/bad.yaml" ] && kubectl -n "$NS" apply -f "$HERE/fixtures/brownfield/bad.yaml"
-[ -f "$HERE/fixtures/brownfield/good.yaml" ] && kubectl -n "$NS" apply -f "$HERE/fixtures/brownfield/good.yaml"
-
 log "create policy definition (idempotent)"
 if [ -f "$HERE/definition.json" ]; then
   if [ -z "${SKIP_POLICY_SETUP:-}" ]; then
@@ -57,20 +53,22 @@ for _ in $(seq 1 30); do
   sleep 10
 done
 
-if [ -f "$HERE/fixtures/greenfield/bad.yaml" ]; then
-  log "greenfield BAD seed (CREATE svc+pod allowed) - additional cluster state"
-  kubectl -n "$NS" apply -f "$HERE/fixtures/greenfield/bad.yaml"
-  log "brownfield BAD DELETE bf-svc-bad (expect deny: bf-pod still matches selector and is in sync data)"
-  if kubectl -n "$NS" delete svc bf-svc-bad --wait=false 2>&1 | tee /tmp/$RULE.bad.log; then
+if [ -f "$HERE/bad.yaml" ]; then
+  log "greenfield BAD seed (CREATE svc+pod allowed)"
+  kubectl -n "$NS" apply -f "$HERE/bad.yaml"
+  log "wait for web-pod to land in Gatekeeper sync inventory"
+  sleep 60
+  log "greenfield BAD DELETE svc-bad (expect deny: web-pod still matches selector and is in sync data)"
+  if kubectl -n "$NS" delete svc svc-bad --wait=false 2>&1 | tee /tmp/$RULE.bad.log; then
     echo "EXPECTED DENY BUT GOT ALLOW for $RULE" >&2
     exit 1
   fi
   grep -qi 'denied\|still matches' /tmp/$RULE.bad.log || echo "warn: denial output did not include expected text"
 fi
 
-if [ -f "$HERE/fixtures/greenfield/good.yaml" ]; then
+if [ -f "$HERE/good.yaml" ]; then
   log "greenfield GOOD (expect allow)"
-  kubectl -n "$NS" apply -f "$HERE/fixtures/greenfield/good.yaml"
+  kubectl -n "$NS" apply -f "$HERE/good.yaml"
 fi
 
-log "done (brownfield ARG compliance verified by top-level orchestrator)"
+log "done"

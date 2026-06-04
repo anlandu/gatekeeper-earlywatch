@@ -1,7 +1,0 @@
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: protected
-  # No earlywatch.io/change-approved annotation -- bad on UPDATE
-data:
-  k: v2

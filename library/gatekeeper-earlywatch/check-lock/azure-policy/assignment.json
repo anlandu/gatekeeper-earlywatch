@@ -1,6 +1,25 @@
 {
-  "effect": { "value": "deny" },
-  "excludedNamespaces": { "value": ["kube-system", "gatekeeper-system", "azure-arc", "azure-extensions-usage-system"] },
-  "namespaces": { "value": [] },
-  "labelSelector": { "value": {} }
+  "effect": {
+    "value": "deny"
+  },
+  "excludedNamespaces": {
+    "value": [
+      "kube-system",
+      "gatekeeper-system",
+      "azure-arc",
+      "azure-extensions-usage-system"
+    ]
+  },
+  "namespaces": {
+    "value": []
+  },
+  "labelSelector": {
+    "value": {}
+  },
+  "operations": {
+    "value": [
+      "DELETE",
+      "UPDATE"
+    ]
+  }
 }
