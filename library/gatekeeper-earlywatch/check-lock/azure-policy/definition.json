@@ -63,6 +63,14 @@
           "DELETE",
           "UPDATE"
         ]
+      },
+      "lockOnMutate": {
+        "type": "Boolean",
+        "metadata": {
+          "displayName": "Lock on mutate",
+          "description": "When true, mutations of the lock annotation itself are also denied."
+        },
+        "defaultValue": true
       }
     },
     "policyRule": {
@@ -94,7 +102,8 @@
           "labelSelector": "[parameters('labelSelector')]",
           "values": {
             "operations": "[parameters('operations')]",
-            "annotation": "earlywatch.io/lock"
+            "annotation": "earlywatch.io/lock",
+            "lockOnMutate": "[parameters('lockOnMutate')]"
           }
         }
       }

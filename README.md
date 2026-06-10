@@ -1,20 +1,20 @@
-# EarlyWatch on Gatekeeper
+# EarlyWatch on Azure Policy + Gatekeeper
 
 The [EarlyWatch](https://github.com/brendandburns/early-watch) admission
-validators, implemented as Gatekeeper `ConstraintTemplate`s + supporting
+validators, implemented as Azure Policies wrapping Gatekeeper `ConstraintTemplate`s + supporting
 infrastructure.
 
-The goal is **same functionality, in Gatekeeper** — not API compatibility
-with upstream EarlyWatch. Operators author Gatekeeper `Constraint`s; approval
-public keys are supplied on `EWApprovalCheck` constraints and can be further
+The goal is **same functionality, in Azure Policy** — not API compatibility
+with upstream EarlyWatch. Operators author Azure Policy definitions and assignments; approval
+public keys are supplied in `EWApprovalCheck` policy definition (or parameterized in the policy assignment) and can be further
 restricted by a provider-mounted trusted-key Secret; signature verification
 runs in a small external-data provider; everything plugs into Gatekeeper's
-audit, dryrun, metrics, and testing pipeline.
+audit, dryrun, metrics, and testing pipeline -> compliance results get surfaced via Azure Policy compliance portal.
 
 ## What's here
 
 ```
-library/gatekeeper-earlywatch/  Gatekeeper Library layout with templates, default constraints, and Config sync
+library/gatekeeper-earlywatch/  Library with templates, Azure policy definition/assignments, and demo script.
 catalog.yaml                    Gatekeeper PolicyCatalog with an EarlyWatch default policy bundle
 provider/                       External-data provider for ApprovalCheck (Go service)
 touch-monitor/                  Audit-webhook service + ManualTouch external-data provider
@@ -32,19 +32,32 @@ crypto, or audit-event ingestion. See
 
 ## Default parity validators
 
-These templates and their default constraints are included in `kustomization.yaml`:
+The table below lists the directory for each EarlyWatch validator equivalent. Each scenario directory has the following structure:
 
-| # | Behavior                                                              | Template                                       | Native CEL? |
+```
+<scenario>/
+├── template.yaml          ConstraintTemplate (Rego and/or CEL/K8sNativeValidation)
+├── constraint.yaml        Constraint binding the template to a scope (Azure Policy addon automatically creates)
+├── kustomization.yaml     Wires template + constraint(s) into the parity stack
+└── azure-policy/
+    ├── definition.json    Custom Azure Policy definition
+    ├── assignment.json    Custom Azure Policy assignment with working default parameters
+    ├── good.yaml          Sample resource that should PASS the policy
+    ├── bad.yaml           Sample resource that should be DENIED by the policy
+    └── demo.live.sh       Scripted live walkthrough against a real cluster
+```
+
+| # | Behavior                                                              | Scenario Directory                                       | Native CEL? |
 |---|-----------------------------------------------------------------------|------------------------------------------------|-------------|
-| 1 | Deny when dependent resources still exist                             | `library/gatekeeper-earlywatch/existing-resources/template.yaml`          | No — needs inventory lookups |
-| 2 | Deny when other resources still reference this one by name            | `library/gatekeeper-earlywatch/name-reference-check/template.yaml`        | No — needs inventory lookups |
-| 3 | Require an annotation (optionally with a specific value)              | `library/gatekeeper-earlywatch/annotation-check/template.yaml`            | Yes |
-| 4 | Require a valid RSA-PSS signed approval annotation                    | `library/gatekeeper-earlywatch/approval-check/template.yaml`              | No — needs crypto/provider |
-| 5 | Honor a lock annotation that blocks delete (optionally update)        | `library/gatekeeper-earlywatch/check-lock/template.yaml`                  | No — compares old/new objects in Rego |
-| 6 | Deny based on a translated EarlyWatch ExpressionCheck rule (example)  | `library/gatekeeper-earlywatch/expression-check/template.yaml`            | Yes |
-| 7 | Deny when touch-monitor reports a recent manual touch                 | `library/gatekeeper-earlywatch/manual-touch-check/template.yaml`          | No — needs external-data provider |
-| 8 | Deny Service updates that orphan all matching Pods                    | `library/gatekeeper-earlywatch/service-pod-selector-check/template.yaml`  | No — needs inventory lookups |
-| 9 | Deny ConfigMap/Secret updates that drop a key still in use            | `library/gatekeeper-earlywatch/data-key-safety-check/template.yaml`       | No — needs inventory lookups |
+| 1 | Deny when dependent resources still exist                             | [existing-resources](/library/gatekeeper-earlywatch/existing-resources)          | No — needs inventory lookups |
+| 2 | Deny when other resources still reference this one by name            | [name-reference-check](/library/gatekeeper-earlywatch/name-reference-check)        | No — needs inventory lookups |
+| 3 | Require an annotation (optionally with a specific value)              | [annotation-check](/library/gatekeeper-earlywatch/annotation-check)            | Yes |
+| 4 | Require a valid RSA-PSS signed approval annotation                    | [approval-check](/library/gatekeeper-earlywatch/approval-check)              | No — needs external data |
+| 5 | Honor a lock annotation that blocks delete (optionally update)        | [check-lock](/library/gatekeeper-earlywatch/check-lock)                  | No — needs inventory |
+| 6 | Deny based on a translated EarlyWatch ExpressionCheck rule (example)  | [expression-check](/library/gatekeeper-earlywatch/expression-check)            | Yes |
+| 7 | Deny when touch-monitor reports a recent manual touch                 | [manual-touch-check](/library/gatekeeper-earlywatch/manual-touch-check)          | No — needs external data provider |
+| 8 | Deny Service updates that orphan all matching Pods                    | [service-pod-selector-check](/library/gatekeeper-earlywatch/service-pod-selector-check)  | No — needs inventory lookups |
+| 9 | Deny ConfigMap/Secret updates that drop a key still in use            | [data-key-safety-check](/library/gatekeeper-earlywatch/data-key-safety-check)       | No — needs inventory lookups |
 
 ## Quick start
 
