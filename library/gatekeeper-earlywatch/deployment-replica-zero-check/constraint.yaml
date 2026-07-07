@@ -1,0 +1,22 @@
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: EWDeploymentReplicaZeroCheck
+metadata:
+  name: audit-deployment-scaled-to-zero
+spec:
+  # Audit only. dryrun reports violations in constraint status / audit results
+  # without denying. Flip to "deny" only after the audit soak.
+  enforcementAction: dryrun
+  match:
+    kinds:
+      - apiGroups: ["apps"]
+        kinds: ["Deployment"]
+    excludedNamespaces:
+      - "kube-system"
+      - "gatekeeper-system"
+      - "azure-arc"
+      - "azure-extensions-usage-system"
+  parameters:
+    # A Deployment carrying any of these annotation keys is treated as an
+    # intentional zero and is not flagged. Teams opt known-idle workloads out.
+    allowZeroAnnotationKeys:
+      - "earlywatch.io/allow-zero-replicas"

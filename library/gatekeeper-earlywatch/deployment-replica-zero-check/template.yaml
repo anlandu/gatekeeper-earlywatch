@@ -1,0 +1,105 @@
+# EarlyWatch DeploymentReplicaZeroCheck -> Gatekeeper self-contained constraint
+#
+# Flags any Deployment whose spec.replicas == 0 (scaled to zero = no running
+# pods). This is a state check, not a transition check, on purpose:
+#
+#   - Gatekeeper's periodic AUDIT controller re-evaluates constraints against
+#     stored objects with only `object` populated (no oldObject, no userInfo).
+#     A transition rule ("went from N to 0") is invisible to audit, so it could
+#     never report an existing scaled-to-zero Deployment. Azure Policy
+#     compliance for AKS is driven by that audit controller, so the rule has to
+#     be expressible from the object alone.
+#
+# Accepted false positives (documented, tunable): Deployments intentionally
+# parked at zero (KEDA scale-to-zero targets, cost-idled dev/test, batch shells).
+# Two object-based escape hatches keep the noise down and work in BOTH the
+# admission and audit paths:
+#
+#   1. allowZeroAnnotationKeys - if the Deployment carries any of these
+#      annotation keys, it is exempt (teams opt a known-idle workload out).
+#   2. Namespace scoping on the constraint (match.excludedNamespaces).
+#
+# Identity-based exemption is intentionally NOT used: the audit controller has
+# no userInfo, so it cannot distinguish a human from a controller and would
+# re-flag automation-idled Deployments regardless. The annotation opt-out is the
+# only suppressor that behaves consistently across admission and audit.
+#
+# replicas is optional in the API and defaults to 1 when unset, so only an
+# explicit 0 is treated as scaled-to-zero.
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: ewdeploymentreplicazerocheck
+  annotations:
+    metadata.gatekeeper.sh/title: "Deployment Replica Zero Check"
+    metadata.gatekeeper.sh/version: "1.0.0"
+    description: "Flags Deployments with spec.replicas set to 0 (scaled to zero), unless opted out by annotation."
+spec:
+  crd:
+    spec:
+      names:
+        kind: EWDeploymentReplicaZeroCheck
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            allowZeroAnnotationKeys:
+              type: array
+              items: {type: string}
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      code:
+        - engine: Rego
+          source:
+            rego: |
+              package ewdeploymentreplicazerocheck
+
+              import future.keywords.in
+
+              # On CREATE/UPDATE and during periodic audit, object is populated.
+              # Fall back to oldObject defensively.
+              candidate := input.review.object {
+                input.review.object != null
+              }
+              candidate := input.review.oldObject {
+                input.review.object == null
+                input.review.oldObject != null
+              }
+
+              spec := object.get(candidate, "spec", {})
+
+              # replicas defaults to 1 when unset; only an explicit 0 counts.
+              replicas := object.get(spec, "replicas", 1)
+
+              exempt_annotation_keys := object.get(input.parameters, "allowZeroAnnotationKeys", ["earlywatch.io/allow-zero-replicas"])
+              annotations := object.get(candidate, ["metadata", "annotations"], {})
+
+              opted_out {
+                some k in exempt_annotation_keys
+                annotations[k]
+              }
+
+              name := object.get(candidate, ["metadata", "name"], object.get(input.review, "name", ""))
+              ns := object.get(candidate, ["metadata", "namespace"], object.get(input.review, "namespace", ""))
+
+              violation[{"msg": msg}] {
+                replicas == 0
+                not opted_out
+                msg := sprintf("Deployment %q in namespace %q has spec.replicas set to 0 (scaled to zero); the workload has no running pods.", [name, ns])
+              }
+        - engine: K8sNativeValidation
+          source:
+            validations:
+              - expression: |
+                  !(
+                    object != null &&
+                    has(object.spec) && has(object.spec.replicas) && object.spec.replicas == 0 &&
+                    !(
+                      has(object.metadata) && has(object.metadata.annotations) &&
+                      variables.params.allowZeroAnnotationKeys.exists(k, k in object.metadata.annotations)
+                    )
+                  )
+                messageExpression: |
+                  'Deployment ' +
+                  (has(object.metadata) && has(object.metadata.name) ? object.metadata.name : 'unknown') +
+                  ' has spec.replicas set to 0 (scaled to zero); the workload has no running pods'

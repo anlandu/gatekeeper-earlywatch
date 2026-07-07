@@ -1,0 +1,64 @@
+{
+  "properties": {
+    "displayName": "EarlyWatch: DeploymentReplicaZero - flag Deployments scaled to zero",
+    "policyType": "Custom",
+    "mode": "Microsoft.Kubernetes.Data",
+    "description": "Flags Deployments with spec.replicas set to 0 (scaled to zero, no running pods), unless the Deployment carries an opt-out annotation. State check so it reports under the Gatekeeper audit controller as well as at admission.",
+    "metadata": { "category": "Kubernetes" },
+    "parameters": {
+      "effect": {
+        "type": "String",
+        "metadata": { "displayName": "Effect", "description": "audit | deny | disabled" },
+        "allowedValues": ["audit", "deny", "disabled"],
+        "defaultValue": "audit"
+      },
+      "excludedNamespaces": {
+        "type": "Array",
+        "metadata": { "displayName": "Namespaces to exclude" },
+        "defaultValue": ["kube-system", "gatekeeper-system", "azure-arc", "azure-extensions-usage-system"]
+      },
+      "namespaces": {
+        "type": "Array",
+        "metadata": { "displayName": "Namespaces to include (empty = all)" },
+        "defaultValue": []
+      },
+      "labelSelector": {
+        "type": "Object",
+        "metadata": { "displayName": "Kubernetes label selector" },
+        "defaultValue": {}
+      },
+      "allowZeroAnnotationKeys": {
+        "type": "Array",
+        "metadata": { "displayName": "Annotation keys that opt a Deployment out of the zero-replica check" },
+        "defaultValue": ["earlywatch.io/allow-zero-replicas"]
+      }
+    },
+    "policyRule": {
+      "if": {
+        "field": "type",
+        "in": [
+          "Microsoft.ContainerService/managedClusters",
+          "Microsoft.Kubernetes/connectedClusters",
+          "AKS Engine"
+        ]
+      },
+      "then": {
+        "effect": "[parameters('effect')]",
+        "details": {
+          "templateInfo": {
+            "sourceType": "PublicURL",
+            "url": "https://raw.githubusercontent.com/anlandu/gatekeeper-earlywatch/refs/heads/main/library/gatekeeper-earlywatch/deployment-replica-zero-check/template.yaml"
+          },
+          "apiGroups": ["apps"],
+          "kinds": ["Deployment"],
+          "namespaces": "[parameters('namespaces')]",
+          "excludedNamespaces": "[parameters('excludedNamespaces')]",
+          "labelSelector": "[parameters('labelSelector')]",
+          "values": {
+            "allowZeroAnnotationKeys": "[parameters('allowZeroAnnotationKeys')]"
+          }
+        }
+      }
+    }
+  }
+}
