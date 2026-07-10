@@ -1,0 +1,9 @@
+{
+  "effect": { "value": "audit" },
+  "warn": { "value": true },
+  "excludedNamespaces": { "value": ["kube-system", "gatekeeper-system", "azure-arc", "azure-extensions-usage-system"] },
+  "namespaces": { "value": [] },
+  "systemUserPrefixes": { "value": ["system:serviceaccount:"] },
+  "systemUsers": { "value": ["aksService", "acsService"] },
+  "helmReleaseNamePrefix": { "value": "sh.helm.release.v1." }
+}

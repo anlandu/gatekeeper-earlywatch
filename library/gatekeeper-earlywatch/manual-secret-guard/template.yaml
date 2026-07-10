@@ -1,0 +1,56 @@
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: ewmanualsecretguard
+  annotations:
+    metadata.gatekeeper.sh/title: "Manual Secret Guard"
+    metadata.gatekeeper.sh/version: "2.0.0"
+    description: "Flags manual (non-system, non-JIT) creation of a Helm release object (Secret or ConfigMap storage backend). Greenfield/admission only."
+spec:
+  crd:
+    spec:
+      names:
+        kind: EWManualSecretGuard
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            breakglassGroup:
+              type: string
+            systemUserPrefixes:
+              type: array
+              items: {type: string}
+            systemUsers:
+              type: array
+              items: {type: string}
+            helmReleaseNamePrefix:
+              type: string
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      code:
+        - engine: K8sNativeValidation
+          source:
+            validations:
+              # Helm release object = Secret type helm.sh/release.v1, or name
+              # sh.helm.release.v1.*, or label owner=helm (secret + configmap backends).
+              # Compliant unless created by a non-system, non-JIT caller. No userInfo => no-op.
+              - expression: |
+                  !(
+                    (
+                      (has(object.type) && object.type == 'helm.sh/release.v1') ||
+                      (has(object.metadata) && has(object.metadata.name) && has(variables.params.helmReleaseNamePrefix) && object.metadata.name.startsWith(variables.params.helmReleaseNamePrefix)) ||
+                      (has(object.metadata) && has(object.metadata.labels) && 'owner' in object.metadata.labels && object.metadata.labels['owner'] == 'helm')
+                    )
+                    &&
+                    (has(request.userInfo) && has(request.userInfo.username) && request.userInfo.username != '')
+                    &&
+                    !(
+                      (has(variables.params.systemUserPrefixes) && variables.params.systemUserPrefixes.exists(p, request.userInfo.username.startsWith(p))) ||
+                      (has(variables.params.systemUsers) && variables.params.systemUsers.exists(u, request.userInfo.username == u)) ||
+                      (has(variables.params.breakglassGroup) && has(request.userInfo.groups) && variables.params.breakglassGroup in request.userInfo.groups)
+                    )
+                  )
+                messageExpression: |
+                  'Helm release object ' + (has(object.metadata) && has(object.metadata.name) ? object.metadata.name : 'unknown') +
+                  ' was created by ' + request.userInfo.username +
+                  ', which is not a system/automation identity or a JIT break-glass caller (proxy for an unapproved manual Helm install).'

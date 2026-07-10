@@ -1,0 +1,22 @@
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: EWNodeCordonGuard
+metadata:
+  name: deny-unjustified-node-cordons
+spec:
+  enforcementAction: deny
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Node"]
+  parameters:
+    # Break-glass group GUID. Via Azure Policy this is set from the subscription
+    # 'breakglassGuid' tag; for a raw constraint, set it here.
+    breakglassGroup: "breakglass-group-placeholder"
+    # masterclient is deliberately NOT here: it is the admin kubeconfig (human).
+    systemUserPrefixes:
+      - "system:serviceaccount:"
+      - "system:node:"
+    systemUsers:
+      - "aksService"
+      - "acsService"
+      - "nodeclient"

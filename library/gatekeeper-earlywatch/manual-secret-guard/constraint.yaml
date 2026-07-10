@@ -1,0 +1,22 @@
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: EWManualSecretGuard
+metadata:
+  name: deny-manual-production-helm-releases
+spec:
+  enforcementAction: deny
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Secret", "ConfigMap"]
+  parameters:
+    # Break-glass group GUID. Via Azure Policy this is set from the subscription
+    # 'breakglassGuid' tag; for a raw constraint, set it here.
+    breakglassGroup: "breakglass-group-placeholder"
+    # Every in-cluster controller (Flux, operators, etc.) authenticates as a
+    # service account, so this prefix approves all of them across namespaces.
+    systemUserPrefixes:
+      - "system:serviceaccount:"
+    systemUsers:
+      - "aksService"
+      - "acsService"
+    helmReleaseNamePrefix: "sh.helm.release.v1."

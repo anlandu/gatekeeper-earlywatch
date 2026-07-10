@@ -1,0 +1,6 @@
+{
+  "effect": { "value": "audit" },
+  "warn": { "value": true },
+  "systemUserPrefixes": { "value": ["system:serviceaccount:", "system:node:"] },
+  "systemUsers": { "value": ["aksService", "acsService", "nodeclient"] }
+}

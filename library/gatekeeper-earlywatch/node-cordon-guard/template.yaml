@@ -1,0 +1,46 @@
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: ewnodecordonguard
+  annotations:
+    metadata.gatekeeper.sh/title: "Node Cordon Guard"
+    metadata.gatekeeper.sh/version: "2.0.0"
+    description: "Flags a Ready Node cordoned by a non-system, non-JIT caller. Greenfield/admission only (no-op when the request carries no userInfo)."
+spec:
+  crd:
+    spec:
+      names:
+        kind: EWNodeCordonGuard
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            breakglassGroup:
+              type: string
+            systemUserPrefixes:
+              type: array
+              items: {type: string}
+            systemUsers:
+              type: array
+              items: {type: string}
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      code:
+        - engine: K8sNativeValidation
+          source:
+            validations:
+              # Compliant unless: node is cordoned AND caller is known AND node is
+              # Ready AND caller is neither a system/automation identity nor a JIT
+              # caller. With no userInfo (audit scan) the second clause makes it a no-op.
+              - expression: |
+                  !(has(object.spec) && has(object.spec.unschedulable) && object.spec.unschedulable == true)
+                  || !(has(request.userInfo) && has(request.userInfo.username) && request.userInfo.username != '')
+                  || (has(object.status) && has(object.status.conditions) &&
+                      object.status.conditions.exists(c, c.type == 'Ready' && c.status != 'True'))
+                  || (has(variables.params.systemUserPrefixes) && variables.params.systemUserPrefixes.exists(p, request.userInfo.username.startsWith(p)))
+                  || (has(variables.params.systemUsers) && variables.params.systemUsers.exists(u, request.userInfo.username == u))
+                  || (has(variables.params.breakglassGroup) && has(request.userInfo.groups) && variables.params.breakglassGroup in request.userInfo.groups)
+                messageExpression: |
+                  'Node ' + (has(object.metadata) && has(object.metadata.name) ? object.metadata.name : 'unknown') +
+                  ' was cordoned by ' + request.userInfo.username +
+                  ', which is not a system/automation identity or a JIT break-glass caller, and the node is Ready.'
