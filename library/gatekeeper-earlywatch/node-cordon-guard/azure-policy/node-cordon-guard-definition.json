@@ -1,0 +1,59 @@
+{
+  "properties": {
+    "displayName": "EarlyWatch: NodeCordonGuard - flag unjustified node cordons",
+    "policyType": "Custom",
+    "mode": "Microsoft.Kubernetes.Data",
+    "description": "Flags a Ready Node cordoned (spec.unschedulable=true) by a caller that is not a system/automation identity or a JIT break-glass caller. Greenfield/admission oriented (relies on request userInfo).",
+    "metadata": { "category": "Kubernetes" },
+    "parameters": {
+      "effect": {
+        "type": "String",
+        "metadata": { "displayName": "Effect", "description": "audit | deny | disabled" },
+        "allowedValues": ["audit", "deny", "disabled"],
+        "defaultValue": "audit"
+      },
+      "warn": {
+        "type": "Boolean",
+        "metadata": { "displayName": "Warn", "description": "Emit a warning instead of blocking" },
+        "defaultValue": true
+      },
+      "systemUserPrefixes": {
+        "type": "Array",
+        "metadata": { "displayName": "Username prefixes treated as system/automation" },
+        "defaultValue": ["system:serviceaccount:", "system:node:"]
+      },
+      "systemUsers": {
+        "type": "Array",
+        "metadata": { "displayName": "Exact usernames treated as system/automation" },
+        "defaultValue": ["aksService", "acsService", "nodeclient"]
+      }
+    },
+    "policyRule": {
+      "if": {
+        "field": "type",
+        "in": [
+          "Microsoft.ContainerService/managedClusters",
+          "Microsoft.Kubernetes/connectedClusters",
+          "AKS Engine"
+        ]
+      },
+      "then": {
+        "effect": "[parameters('effect')]",
+        "details": {
+          "warn": "[parameters('warn')]",
+          "templateInfo": {
+            "sourceType": "Base64Encoded",
+            "content": "YXBpVmVyc2lvbjogdGVtcGxhdGVzLmdhdGVrZWVwZXIuc2gvdjEKa2luZDogQ29uc3RyYWludFRlbXBsYXRlCm1ldGFkYXRhOgogIG5hbWU6IGV3bm9kZWNvcmRvbmd1YXJkCiAgYW5ub3RhdGlvbnM6CiAgICBtZXRhZGF0YS5nYXRla2VlcGVyLnNoL3RpdGxlOiAiTm9kZSBDb3Jkb24gR3VhcmQiCiAgICBtZXRhZGF0YS5nYXRla2VlcGVyLnNoL3ZlcnNpb246ICIyLjAuMCIKICAgIGRlc2NyaXB0aW9uOiAiRmxhZ3MgYSBSZWFkeSBOb2RlIGNvcmRvbmVkIGJ5IGEgbm9uLXN5c3RlbSwgbm9uLUpJVCBjYWxsZXIuIEdyZWVuZmllbGQvYWRtaXNzaW9uIG9ubHkgKG5vLW9wIHdoZW4gdGhlIHJlcXVlc3QgY2FycmllcyBubyB1c2VySW5mbykuIgpzcGVjOgogIGNyZDoKICAgIHNwZWM6CiAgICAgIG5hbWVzOgogICAgICAgIGtpbmQ6IEVXTm9kZUNvcmRvbkd1YXJkCiAgICAgIHZhbGlkYXRpb246CiAgICAgICAgb3BlbkFQSVYzU2NoZW1hOgogICAgICAgICAgdHlwZTogb2JqZWN0CiAgICAgICAgICBwcm9wZXJ0aWVzOgogICAgICAgICAgICBicmVha2dsYXNzR3JvdXA6CiAgICAgICAgICAgICAgdHlwZTogc3RyaW5nCiAgICAgICAgICAgIHN5c3RlbVVzZXJQcmVmaXhlczoKICAgICAgICAgICAgICB0eXBlOiBhcnJheQogICAgICAgICAgICAgIGl0ZW1zOiB7dHlwZTogc3RyaW5nfQogICAgICAgICAgICBzeXN0ZW1Vc2VyczoKICAgICAgICAgICAgICB0eXBlOiBhcnJheQogICAgICAgICAgICAgIGl0ZW1zOiB7dHlwZTogc3RyaW5nfQogIHRhcmdldHM6CiAgICAtIHRhcmdldDogYWRtaXNzaW9uLms4cy5nYXRla2VlcGVyLnNoCiAgICAgIGNvZGU6CiAgICAgICAgLSBlbmdpbmU6IEs4c05hdGl2ZVZhbGlkYXRpb24KICAgICAgICAgIHNvdXJjZToKICAgICAgICAgICAgdmFsaWRhdGlvbnM6CiAgICAgICAgICAgICAgIyBDb21wbGlhbnQgdW5sZXNzOiBub2RlIGlzIGNvcmRvbmVkIEFORCBjYWxsZXIgaXMga25vd24gQU5EIG5vZGUgaXMKICAgICAgICAgICAgICAjIFJlYWR5IEFORCBjYWxsZXIgaXMgbmVpdGhlciBhIHN5c3RlbS9hdXRvbWF0aW9uIGlkZW50aXR5IG5vciBhIEpJVCBjYWxsZXIuCiAgICAgICAgICAgICAgIyBJZiB0aGVyZSdzIG5vIHVzZXIgaW5mbywgd2UncmUgaW4gdGhlIGJyb3duZmllbGQgYXVkaXQgc2NhbiwgYW5kIHdlIGNhbid0CiAgICAgICAgICAgICAgIyBkZXRlcm1pbmUgY29tcGxpYW5jZSB3aXRob3V0IHVzZXIgaW5mbywgc28gd2UgZG9uJ3QgZmxhZyBhIHZpb2xhdGlvbi4KICAgICAgICAgICAgICAtIGV4cHJlc3Npb246IHwKICAgICAgICAgICAgICAgICAgIShoYXMob2JqZWN0LnNwZWMpICYmIGhhcyhvYmplY3Quc3BlYy51bnNjaGVkdWxhYmxlKSAmJiBvYmplY3Quc3BlYy51bnNjaGVkdWxhYmxlID09IHRydWUpCiAgICAgICAgICAgICAgICAgIHx8ICEoaGFzKHJlcXVlc3QudXNlckluZm8pICYmIGhhcyhyZXF1ZXN0LnVzZXJJbmZvLnVzZXJuYW1lKSAmJiByZXF1ZXN0LnVzZXJJbmZvLnVzZXJuYW1lICE9ICcnKQogICAgICAgICAgICAgICAgICB8fCAoaGFzKG9iamVjdC5zdGF0dXMpICYmIGhhcyhvYmplY3Quc3RhdHVzLmNvbmRpdGlvbnMpICYmCiAgICAgICAgICAgICAgICAgICAgICBvYmplY3Quc3RhdHVzLmNvbmRpdGlvbnMuZXhpc3RzKGMsIGMudHlwZSA9PSAnUmVhZHknICYmIGMuc3RhdHVzICE9ICdUcnVlJykpCiAgICAgICAgICAgICAgICAgIHx8IChoYXModmFyaWFibGVzLnBhcmFtcy5zeXN0ZW1Vc2VyUHJlZml4ZXMpICYmIHZhcmlhYmxlcy5wYXJhbXMuc3lzdGVtVXNlclByZWZpeGVzLmV4aXN0cyhwLCByZXF1ZXN0LnVzZXJJbmZvLnVzZXJuYW1lLnN0YXJ0c1dpdGgocCkpKQogICAgICAgICAgICAgICAgICB8fCAoaGFzKHZhcmlhYmxlcy5wYXJhbXMuc3lzdGVtVXNlcnMpICYmIHZhcmlhYmxlcy5wYXJhbXMuc3lzdGVtVXNlcnMuZXhpc3RzKHUsIHJlcXVlc3QudXNlckluZm8udXNlcm5hbWUgPT0gdSkpCiAgICAgICAgICAgICAgICAgIHx8IChoYXModmFyaWFibGVzLnBhcmFtcy5icmVha2dsYXNzR3JvdXApICYmIGhhcyhyZXF1ZXN0LnVzZXJJbmZvLmdyb3VwcykgJiYgdmFyaWFibGVzLnBhcmFtcy5icmVha2dsYXNzR3JvdXAgaW4gcmVxdWVzdC51c2VySW5mby5ncm91cHMpCiAgICAgICAgICAgICAgICBtZXNzYWdlRXhwcmVzc2lvbjogfAogICAgICAgICAgICAgICAgICAnTm9kZSAnICsgKGhhcyhvYmplY3QubWV0YWRhdGEpICYmIGhhcyhvYmplY3QubWV0YWRhdGEubmFtZSkgPyBvYmplY3QubWV0YWRhdGEubmFtZSA6ICd1bmtub3duJykgKwogICAgICAgICAgICAgICAgICAnIHdhcyBjb3Jkb25lZCBieSAnICsgcmVxdWVzdC51c2VySW5mby51c2VybmFtZSArCiAgICAgICAgICAgICAgICAgICcsIHdoaWNoIGlzIG5vdCBhIHN5c3RlbS9hdXRvbWF0aW9uIGlkZW50aXR5IG9yIGEgSklUIGJyZWFrLWdsYXNzIGNhbGxlciwgYW5kIHRoZSBub2RlIGlzIFJlYWR5Lic="
+          },
+          "apiGroups": [""],
+          "kinds": ["Node"],
+          "values": {
+            "breakglassGroup": "[if(contains(subscription().tags, 'breakglassGuid'), subscription().tags['breakglassGuid'], 'd215e208-8f6f-4c64-af87-534f51499029')]",
+            "systemUserPrefixes": "[parameters('systemUserPrefixes')]",
+            "systemUsers": "[parameters('systemUsers')]"
+          }
+        }
+      }
+    }
+  }
+}

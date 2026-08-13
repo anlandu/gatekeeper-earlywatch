@@ -30,8 +30,9 @@ spec:
           source:
             validations:
               # Compliant unless: node is cordoned AND caller is known AND node is
-              # Ready AND caller is neither a system/automation identity nor a JIT
-              # caller. With no userInfo (audit scan) the second clause makes it a no-op.
+              # Ready AND caller is neither a system/automation identity nor a JIT caller.
+              # If there's no user info, we're in the brownfield audit scan, and we can't
+              # determine compliance without user info, so we don't flag a violation.
               - expression: |
                   !(has(object.spec) && has(object.spec.unschedulable) && object.spec.unschedulable == true)
                   || !(has(request.userInfo) && has(request.userInfo.username) && request.userInfo.username != '')
