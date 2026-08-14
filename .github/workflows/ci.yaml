@@ -41,7 +41,7 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
           go install sigs.k8s.io/kind@latest
-          go install github.com/open-policy-agent/gatekeeper/v3/cmd/gator@v3.22.2
+          go install github.com/open-policy-agent/gatekeeper/v3/cmd/gator@v3.23.0
           echo "$(go env GOPATH)/bin" >> "${GITHUB_PATH}"
 
       - name: Run Go tests and static policy checks

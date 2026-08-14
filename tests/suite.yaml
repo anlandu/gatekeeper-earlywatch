@@ -263,6 +263,117 @@ tests:
   # provide. The touch-monitor Go tests cover provider/cache behavior; live
   # Gatekeeper validation covers the external-data template wiring.
 
+  - name: crd-delete-guard
+    template: ../library/gatekeeper-earlywatch/crd-delete-guard/template.yaml
+    constraint: ../library/gatekeeper-earlywatch/crd-delete-guard/constraint.yaml
+    cases:
+      - name: deny-when-non-exempt-identity-deletes-crd
+        object: crd-delete/crd-delete-user.yaml
+        assertions:
+          - violations: yes
+      - name: allow-when-garbage-collector-deletes-crd
+        object: crd-delete/crd-delete-gc.yaml
+        assertions:
+          - violations: no
+      - name: allow-when-platform-identity-deletes-crd
+        object: crd-delete/crd-delete-platform.yaml
+        assertions:
+          - violations: no
+
+  - name: deployment-replica-zero-check
+    template: ../library/gatekeeper-earlywatch/deployment-replica-zero-check/template.yaml
+    constraint: ../library/gatekeeper-earlywatch/deployment-replica-zero-check/constraint.yaml
+    cases:
+      - name: deny-when-replicas-zero
+        object: deployment-replica-zero/dep-replicas-zero.yaml
+        assertions:
+          - violations: yes
+      - name: allow-when-replicas-one
+        object: deployment-replica-zero/dep-replicas-one.yaml
+        assertions:
+          - violations: no
+      - name: allow-when-opted-out-by-annotation
+        object: deployment-replica-zero/dep-replicas-zero-optout.yaml
+        assertions:
+          - violations: no
+      - name: allow-when-replicas-absent-defaults-to-one
+        object: deployment-replica-zero/dep-replicas-absent.yaml
+        assertions:
+          - violations: no
+
+  # node-cordon-guard and manual-secret-guard are CEL-only (K8sNativeValidation)
+  # greenfield validations. gator v3.23.0+ enables the native-validation driver
+  # by default (--enable-k8s-native-validation defaults to true), so they verify
+  # offline here. Cases carry userInfo via AdmissionReview fixtures; a bare object
+  # (no userInfo) models the brownfield audit scan, which must not flag.
+  - name: node-cordon-guard
+    template: ../library/gatekeeper-earlywatch/node-cordon-guard/node-cordon-guard-template.yaml
+    constraint: ../library/gatekeeper-earlywatch/node-cordon-guard/constraint.yaml
+    cases:
+      - name: deny-when-human-cordons-ready-node
+        object: node-cordon/node-cordon-human.yaml
+        assertions:
+          - violations: yes
+            message: "was cordoned by"
+      - name: allow-when-service-account-cordons
+        object: node-cordon/node-cordon-serviceaccount.yaml
+        assertions:
+          - violations: no
+      - name: allow-when-node-identity-cordons
+        object: node-cordon/node-cordon-nodeidentity.yaml
+        assertions:
+          - violations: no
+      - name: allow-when-node-not-ready
+        object: node-cordon/node-cordon-human-notready.yaml
+        assertions:
+          - violations: no
+      - name: allow-when-node-not-cordoned
+        object: node-cordon/node-uncordon-human.yaml
+        assertions:
+          - violations: no
+      - name: allow-when-caller-in-breakglass-group
+        object: node-cordon/node-cordon-breakglass.yaml
+        assertions:
+          - violations: no
+      - name: allow-when-no-userinfo-brownfield-audit
+        object: node-cordon/node-cordon-no-userinfo.yaml
+        assertions:
+          - violations: no
+
+  - name: manual-secret-guard
+    template: ../library/gatekeeper-earlywatch/manual-secret-guard/manual-secret-guard-template.yaml
+    constraint: ../library/gatekeeper-earlywatch/manual-secret-guard/constraint.yaml
+    cases:
+      - name: deny-when-human-creates-helm-secret-by-type
+        object: manual-secret/secret-helm-type-human.yaml
+        assertions:
+          - violations: yes
+            message: "proxy for an unapproved manual Helm install"
+      - name: deny-when-human-creates-helm-configmap-by-name
+        object: manual-secret/configmap-helm-name-human.yaml
+        assertions:
+          - violations: yes
+      - name: deny-when-human-creates-object-labelled-owner-helm
+        object: manual-secret/secret-helm-label-human.yaml
+        assertions:
+          - violations: yes
+      - name: allow-when-service-account-creates-helm-secret
+        object: manual-secret/secret-helm-serviceaccount.yaml
+        assertions:
+          - violations: no
+      - name: allow-when-caller-in-breakglass-group
+        object: manual-secret/secret-helm-breakglass.yaml
+        assertions:
+          - violations: no
+      - name: allow-when-not-a-helm-release-object
+        object: manual-secret/secret-plain-human.yaml
+        assertions:
+          - violations: no
+      - name: allow-when-no-userinfo-brownfield-audit
+        object: manual-secret/secret-helm-no-userinfo.yaml
+        assertions:
+          - violations: no
+
   # Malformed-input fixtures: defensively validate that templates don't crash
   # on missing oldObject, empty annotations, or missing labels.
   - name: malformed-inputs

@@ -186,6 +186,24 @@ func writeParityCoverageArtifact(artifactPath string) error {
 		"malformed-inputs": {
 			"missing-annotations-map",
 		},
+		"node-cordon-guard": {
+			"deny-when-human-cordons-ready-node",
+			"allow-when-service-account-cordons",
+			"allow-when-node-identity-cordons",
+			"allow-when-node-not-ready",
+			"allow-when-node-not-cordoned",
+			"allow-when-caller-in-breakglass-group",
+			"allow-when-no-userinfo-brownfield-audit",
+		},
+		"manual-secret-guard": {
+			"deny-when-human-creates-helm-secret-by-type",
+			"deny-when-human-creates-helm-configmap-by-name",
+			"deny-when-human-creates-object-labelled-owner-helm",
+			"allow-when-service-account-creates-helm-secret",
+			"allow-when-caller-in-breakglass-group",
+			"allow-when-not-a-helm-release-object",
+			"allow-when-no-userinfo-brownfield-audit",
+		},
 	}
 
 	requiredGoTests := map[string][]string{
