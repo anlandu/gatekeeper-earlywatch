@@ -31,8 +31,6 @@ kind: ConstraintTemplate
 metadata:
   name: ewdeploymentreplicazerocheck
   annotations:
-    metadata.gatekeeper.sh/title: "Deployment Replica Zero Check"
-    metadata.gatekeeper.sh/version: "1.0.0"
     description: "Flags Deployments with spec.replicas set to 0 (scaled to zero), unless opted out by annotation."
 spec:
   crd:

@@ -11,8 +11,6 @@ kind: ConstraintTemplate
 metadata:
   name: ewdatakeysafetycheck
   annotations:
-    metadata.gatekeeper.sh/title: "Data Key Safety Check"
-    metadata.gatekeeper.sh/version: "2.0.0"
     description: "Prevents removing ConfigMap or Secret data keys that are still referenced by Pods."
     metadata.gatekeeper.sh/requires-sync-data: |
       [[{"groups":[""],"versions":["v1"],"kinds":["Pod"]}]]

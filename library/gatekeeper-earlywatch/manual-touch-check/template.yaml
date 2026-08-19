@@ -15,8 +15,6 @@ kind: ConstraintTemplate
 metadata:
   name: ewmanualtouchcheck
   annotations:
-    metadata.gatekeeper.sh/title: "Manual Touch Check"
-    metadata.gatekeeper.sh/version: "1.0.0"
     description: "Requires a recent matching manual touch event before allowing protected operations."
 spec:
   crd:

@@ -8,8 +8,6 @@ kind: ConstraintTemplate
 metadata:
   name: ewexistingresourcesfield
   annotations:
-    metadata.gatekeeper.sh/title: "Existing Resources (field selector)"
-    metadata.gatekeeper.sh/version: "2.0.0"
     description: "Denies operations on a Service when Pods still match its spec.selector."
     metadata.gatekeeper.sh/requires-sync-data: |
       [[{"groups":[""],"versions":["v1"],"kinds":["Pod"]}]]

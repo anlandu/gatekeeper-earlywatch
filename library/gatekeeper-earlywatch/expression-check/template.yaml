@@ -10,8 +10,6 @@ kind: ConstraintTemplate
 metadata:
   name: ewexpressioncheck
   annotations:
-    metadata.gatekeeper.sh/title: "Expression Check (CEL)"
-    metadata.gatekeeper.sh/version: "3.0.0"
     description: "Denies operations whose namespace or name matches configurable regex patterns. CEL/K8sNativeValidation -> Gatekeeper generates a ValidatingAdmissionPolicy."
 spec:
   crd:

@@ -10,5 +10,8 @@ resources:
 - manual-touch-check
 - service-pod-selector-check
 - data-key-safety-check
+- delete-pod-prechecks
+- crd-delete-guard
+- deployment-replica-zero-check
 - node-cordon-guard
 - manual-secret-guard

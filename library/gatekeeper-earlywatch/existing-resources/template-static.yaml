@@ -8,8 +8,6 @@ kind: ConstraintTemplate
 metadata:
   name: ewexistingresourcesstatic
   annotations:
-    metadata.gatekeeper.sh/title: "Existing Resources (static selector)"
-    metadata.gatekeeper.sh/version: "3.0.0"
     description: "Denies operations on a Service when a Pod with a configurable label key/value still exists in the namespace."
     metadata.gatekeeper.sh/requires-sync-data: |
       [[{"groups":[""],"versions":["v1"],"kinds":["Pod"]}]]

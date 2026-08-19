@@ -22,8 +22,6 @@ kind: ConstraintTemplate
 metadata:
   name: ewapprovalcheck
   annotations:
-    metadata.gatekeeper.sh/title: "Approval Check"
-    metadata.gatekeeper.sh/version: "1.0.0"
     description: "Verifies signed approvals for DELETE and UPDATE requests through the EarlyWatch external-data provider."
 spec:
   crd:
